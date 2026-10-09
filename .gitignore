@@ -1,0 +1,34 @@
+# Local configuration -- environment specifics and credential-adjacent facts
+config/install.env
+
+# Credentials. Must never be committed.
+*pull-secret*.json
+kubeconfig
+kubeadmin-password
+*.pem
+*.key
+auth.json
+
+# The install directory. The installer destroys and regenerates it, and it
+# holds the kubeadmin password, the generated kubeconfig and the ignition
+# configs -- all of which are credentials.
+cluster/
+auth/
+.openshift_install_state.json
+.openshift_install.log
+
+# Generated artifacts
+*.iso
+*.tar
+*.tar.gz
+SHA256SUMS
+
+# Evidence is produced per cluster and per date, and some of it names
+# people. It belongs in the pack, not in the repository.
+evidence/
+handoff/
+
+# Editor noise
+.DS_Store
+*.swp
+*~

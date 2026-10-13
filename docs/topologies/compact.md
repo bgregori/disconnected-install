@@ -19,12 +19,84 @@ is expressed in `install-config.yaml` is not the same as "3 and 0", and
 getting it wrong produces a cluster that installs cleanly and refuses to
 schedule anything.
 
-> **TODO:** needs validation on real hardware — the `controlPlane` and
-> `compute` stanzas for a compact cluster, and whether the schedulability
-> of control plane nodes is set in `install-config.yaml`, as a manifest
-> in [chapter 3's window](../03-manifests.md), or on day 1. The three
-> answers have different consequences for when workloads can first be
-> scheduled, and only one of them is right.
+> 🚧 **DRAFT -- NOT VALIDATED.** Written from documentation, not executed
+> against a cluster. Verify before running. Replace this block with the
+> command as run, then update VALIDATION.md.
+
+A compact cluster is **three and zero**, not three and three:
+
+```yaml
+# ===== EDIT IN: ${OCP_INSTALL_ROOT}/cluster/install-config.yaml =====
+controlPlane:
+  architecture: amd64
+  hyperthreading: Enabled
+  name: master
+  replicas: 3
+compute:
+- architecture: amd64
+  hyperthreading: Enabled
+  name: worker
+  replicas: 0
+platform:
+  baremetal:
+    apiVIPs:
+    - <api-vip>
+    ingressVIPs:
+    - <ingress-vip>
+```
+
+`compute.replicas: 0` is the switch. It does not mean "no workloads" —
+it is the documented way of saying "the control plane nodes are also
+the worker nodes", and the installer reads it that way. "3 and 3"
+describes six machines, three of which you do not have, and is the
+configuration that installs cleanly and refuses to schedule anything.
+
+**Where schedulability is set is the part to verify.** The installer is
+documented to set it for you, by writing `mastersSchedulable: true`
+into the generated scheduler manifest — but that is documented for
+installer-provisioned infrastructure, and the user-provisioned
+procedure tells you to check the manifest by hand. The agent-based
+installer sits between the two and this repository has not established
+which behaviour it has. So check, during
+[chapter 3's window](../03-manifests.md#the-window), while it is still
+a file you can edit:
+
+> 🚧 **DRAFT -- NOT VALIDATED.** Written from documentation, not executed
+> against a cluster. Verify before running. Replace this block with the
+> command as run, then update VALIDATION.md.
+
+```sh
+# ===== RUN ON: THE INSTALL HOST =====
+: "${OCP_INSTALL_ROOT:?set it first -- see 01-intake.md}"
+grep -n 'mastersSchedulable' \
+  ${OCP_INSTALL_ROOT}/cluster/manifests/cluster-scheduler-02-config.yml
+```
+
+It must read `mastersSchedulable: true`. If it reads `false`, set it
+there — in the manifest window, before ignition — rather than planning
+to fix it on day 1.
+
+The day-1 check, for the same fact after the cluster exists:
+
+> 🚧 **DRAFT -- NOT VALIDATED.** Written from documentation, not executed
+> against a cluster. Verify before running. Replace this block with the
+> command as run, then update VALIDATION.md.
+
+```sh
+# ===== RUN ON: THE CLUSTER =====
+oc get scheduler cluster -o jsonpath='{.spec.mastersSchedulable}{"\n"}'
+oc get nodes -o wide --show-labels
+```
+
+Every node should carry both the `master` and `worker` role labels.
+Three nodes showing `master` alone, with `mastersSchedulable: false`,
+is the failure this section exists to prevent — and it is recoverable
+on day 1, unlike the replica counts themselves.
+
+Also confirm, before `agent create image` consumes the file: the VIP
+keys are the **plural list forms** `apiVIPs:` and `ingressVIPs:`. The
+singular `apiVIP:`/`ingressVIP:` are the deprecated spelling and are
+what most older examples on the internet still show.
 
 ---
 
@@ -75,10 +147,71 @@ oc get machineconfigpool -w
 oc get nodes
 ```
 
-> **TODO:** needs validation on real hardware — measured drain, reboot
-> and rejoin time per node on this hardware, and the total for a
-> three-node rollout. This is the number a change request needs and the
-> number nobody has.
+### `maxUnavailable` on the master pool
+
+One knob governs how many nodes the MCO takes at once, and on compact
+the default is the only safe value.
+
+> 🚧 **DRAFT -- NOT VALIDATED.** Written from documentation, not executed
+> against a cluster. Verify before running. Replace this block with the
+> command as run, then update VALIDATION.md.
+
+```sh
+# ===== RUN ON: THE CLUSTER =====
+oc get machineconfigpool master \
+  -o jsonpath='{.spec.maxUnavailable}{"\n"}'
+```
+
+An empty result means unset, which means the default of **1**. Leave it
+there. Raising it to 2 on a three-node cluster takes two of three etcd
+members down together and loses quorum — the cluster does not degrade,
+it stops. There is no three-node setting faster than 1 that is also
+safe, so the only reason to touch this field is to confirm nobody else
+has.
+
+### Measuring the rollout
+
+> 🚧 **DRAFT -- NOT VALIDATED.** Written from documentation, not executed
+> against a cluster. Verify before running. Replace this block with the
+> command as run, then update VALIDATION.md.
+
+The numbers below are deliberately absent, because inventing them is
+worse than not having them: a change request built on a guessed reboot
+time is a change window that overruns. What is drafted here is the
+*method* for getting them on the first real rollout, which is the one
+chance you have to measure an empty cluster.
+
+```sh
+# ===== RUN ON: THE CLUSTER =====
+oc get machineconfigpool master -w     # MACHINECOUNT / UPDATEDMACHINECOUNT
+oc get nodes -w                        # Ready / NotReady / SchedulingDisabled
+```
+
+Run them in two terminals, with timestamps. `oc get mcp` already prints
+`UPDATED`, `UPDATING`, `DEGRADED` and the three machine counts, so no
+custom columns are needed — the per-node detail you are timing comes
+from the second watch.
+
+Record four timestamps per node, from the first rollout you run:
+
+| Mark | Taken when |
+|---|---|
+| drain start | the node goes `SchedulingDisabled` |
+| reboot start | the node goes `NotReady` |
+| rejoin | the node returns `Ready` |
+| node done | `updatedMachineCount` increments |
+
+Three nodes × (drain + reboot + rejoin), plus the MCO's wait for etcd
+between nodes, is the figure to put in the change request. Measure it
+on the IDMS/ITMS rollout in
+[chapter 6](../06-day1-cluster-config.md) — it is the first real
+three-node rollout this cluster will do, it has to happen anyway, and
+nothing is running on the cluster yet to confuse the timings.
+
+Then measure it **again** under load before quoting it for a
+remediation batch. A drain on an empty cluster and a drain on a loaded
+one are not the same operation, which is the point of the paragraph
+above.
 
 ### etcd during a rollout
 
@@ -92,9 +225,58 @@ Two practical rules follow:
   healthy before taking the next one. That wait is the thing keeping the
   cluster up.
 
-> **TODO:** needs validation on real hardware — the etcd health check
-> worth running before a rollout, and what a degraded-but-quorate etcd
-> looks like so it is recognisable.
+> 🚧 **DRAFT -- NOT VALIDATED.** Written from documentation, not executed
+> against a cluster. Verify before running. Replace this block with the
+> command as run, then update VALIDATION.md.
+
+The pre-rollout gate, cheapest check first:
+
+```sh
+# ===== RUN ON: THE CLUSTER =====
+oc get clusteroperator etcd
+oc get pods -n openshift-etcd -l app=etcd -o wide
+oc get etcd cluster -o jsonpath=\
+'{range .status.conditions[?(@.type=="EtcdMembersAvailable")]}{.message}{"\n"}{end}'
+```
+
+Then, only if the above is not conclusive, ask etcd itself:
+
+```sh
+# ===== RUN ON: THE CLUSTER =====
+ETCD_POD=$(oc get pods -n openshift-etcd -l app=etcd \
+  -o jsonpath='{.items[0].metadata.name}')
+
+oc exec -n openshift-etcd ${ETCD_POD} -c etcdctl -- \
+  etcdctl endpoint health --cluster -w table
+oc exec -n openshift-etcd ${ETCD_POD} -c etcdctl -- \
+  etcdctl endpoint status --cluster -w table
+```
+
+Note the location marker: these run **on the cluster**, through the
+API, not in a node debug shell. `etcdctl` exists inside the etcd pod
+and the `etcdctl` container already holds the certificates — running
+`etcdctl` from a node debug shell is a different command with different
+credentials and is not what this check is.
+
+Three things to know when reading the output:
+
+- **`etcdctl member list` is not a health check.** A dead member is
+  still a member and still listed. `endpoint health` is the one that
+  reports `false`.
+- **Degraded-but-quorate looks like two healthy endpoints and one
+  missing or erroring**, with the cluster still fully serving. This is
+  the state in which a rollout must **not** be started: the next node
+  the MCO takes is the second one, and that is quorum.
+- **Revision alignment matters as much as health.** If `oc describe
+  etcd cluster` shows members at different revisions, a static-pod
+  rollout is still in flight. Starting a MachineConfig rollout on top
+  of it stacks two reboot cycles.
+
+What to establish on the real cluster, because reading the healthy
+output is easy and reading the broken output is the skill: capture the
+output of all of the above **while one node is deliberately down**,
+during the first rollout, when the cluster is still empty and you can
+afford to look. That transcript is worth more than this section.
 
 ---
 
@@ -103,19 +285,87 @@ Two practical rules follow:
 Three nodes is the minimum for most replicated storage, which is the
 main practical reason to choose compact over single node.
 
-> **TODO:** needs validation on real hardware — which storage provider
-> is used, and whether it was mirrored. Like single node, this is a
-> [chapter 1 mirror gate](../01-intake.md#the-mirror-gate) item: a
-> storage operator absent from prep's `imageset-config.yaml` is a
-> transfer window, not an afternoon.
->
-> Establish also the interaction with rollouts: replicated storage on
-> the same three nodes that are rebooting one at a time has its own
-> rebuild behaviour, and a rollout that proceeds faster than storage
-> rebuilds is how you lose data with every node individually healthy.
+> 🚧 **DRAFT -- NOT VALIDATED.** Written from documentation, not executed
+> against a cluster. Verify before running. Replace this block with the
+> command as run, then update VALIDATION.md.
 
-That last point is the one worth validating before anything else on this
-page. It is the failure mode unique to compact, and it is not obvious.
+ODF is supported on a three-node compact cluster — Red Hat documents
+it, three nodes is its minimum, and it is the main reason to choose
+this topology over [single node](sno.md#storage). The caveats are real
+and all of them bite harder at three nodes than at any other size:
+
+- **The published resource figures are for ODF alone.** They exclude
+  the control plane, which on compact is on the same three machines.
+  Size for ODF *plus* etcd, the API servers, the controllers, ingress
+  and your workload, on every node. Nodes sized from the ODF table
+  alone are undersized here by the whole control plane.
+- **Losing one node costs a third of the storage and an etcd member at
+  the same time.** Everywhere else those are two separate incidents.
+- **Each node needs its own raw, pristine devices** — no leftover
+  partitions, PVs, VGs or LVs — and not the RHCOS installation disk.
+- **The minimal/degraded deployment mode is not the one to pick** for
+  anything that has to survive an assessment. Converting it later is
+  more work than sizing it correctly now.
+- **If you only need object storage**, the Multicloud Object Gateway
+  alone is a far smaller footprint than a full internal-mode cluster,
+  and on three converged nodes that difference is the difference.
+
+Like single node, this is a
+[chapter 1 mirror gate](../01-intake.md#the-mirror-gate) item: ODF is
+several operators and a large set of images, and one absent from
+prep's `imageset-config.yaml` is a transfer window, not an afternoon.
+Add it to chapter 1's table — it is not there today, because that
+table lists only what this repository itself needs.
+
+### Rollouts and storage rebuild
+
+This is the failure mode unique to compact, and the one to validate
+before anything else on this page.
+
+> 🚧 **DRAFT -- NOT VALIDATED.** Written from documentation, not executed
+> against a cluster. Verify before running. Replace this block with the
+> command as run, then update VALIDATION.md.
+
+Replicated storage on the same three nodes that are rebooting one at a
+time has its own rebuild behaviour, and **the MCO does not know about
+it.** The MCO waits for a node to be `Ready` and for etcd to be
+healthy. It does not wait for Ceph to finish backfilling. A rollout
+that proceeds faster than storage rebuilds takes the next node while
+the data that was on the last one is still only partly replaced — and
+every node is individually healthy the whole time.
+
+So the pre-rollout gate on compact is **two** checks, not one: etcd,
+from the section above, and storage. Drafted:
+
+```sh
+# ===== RUN ON: THE CLUSTER =====
+oc get storagecluster -n openshift-storage
+oc get cephcluster -n openshift-storage \
+  -o jsonpath='{.items[0].status.ceph.health}{"\n"}'
+```
+
+`HEALTH_OK` before you start, and `HEALTH_OK` again between nodes. A
+rollout held at `HEALTH_WARN` while a rebuild finishes is a slow change
+window; one that is not held is a data-loss incident with a clean
+`oc get nodes`.
+
+What to establish on the real cluster: whether the MCO can be made to
+wait — a pod disruption budget on the storage pods is the obvious
+candidate, since the drain respects PDBs and the MCO respects the drain
+— or whether the only answer is a human watching `oc get mcp` with a
+finger on the pause button:
+
+```sh
+# ===== RUN ON: THE CLUSTER =====
+oc patch machineconfigpool master --type=merge \
+  -p '{"spec":{"paused":true}}'       # and false to resume
+```
+
+Pausing the master pool mid-rollout is itself worth rehearsing before
+you need it, and worth un-pausing deliberately: a pool left paused
+silently stops receiving every later MachineConfig, including the
+remediations in [chapter 10](../10-remediation.md), and reports nothing
+wrong while doing it.
 
 ---
 

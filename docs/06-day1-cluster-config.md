@@ -47,6 +47,7 @@ received:
 
 ```sh
 # ===== RUN ON: THE CLUSTER =====
+: "${OCP_INSTALL_ROOT:?set it first -- see 01-intake.md}"
 ls -l ${OCP_INSTALL_ROOT}/handoff/cluster-resources/
 ```
 
@@ -95,10 +96,106 @@ to be acted on, so it has to have been in prep's operator list at mirror
 time. Without it, upgrades are by digest — see
 [13-day2.md](13-day2.md).
 
-> **TODO:** needs validation on real hardware — the end-to-end OSUS path.
-> Prep's own validation record notes that its measured run **predates the
-> `graph: true` default** and that the OSUS path has not been executed
-> there either. Do not describe behaviour neither repository has seen.
+> 🚧 **DRAFT -- NOT VALIDATED.** Written from documentation, not executed
+> against a cluster. Verify before running. Replace this block with the
+> command as run, then update VALIDATION.md.
+>
+> This one is weaker than most of the drafts in this repository and you
+> should treat it accordingly. Prep's measured run **predates the
+> `graph: true` default**, so neither repository has seen an OSUS
+> instance come up against a mirrored graph. What follows is the
+> documented shape of the procedure plus the two trust failures that
+> every disconnected write-up reports; none of it has been observed
+> here. The parts most likely to be wrong are the CA wiring and the
+> exact `status` field names.
+
+First confirm the operator is actually installed, because applying an
+`UpdateService` to a cluster without its controller succeeds, reports
+nothing, and does nothing:
+
+```sh
+# ===== RUN ON: THE CLUSTER =====
+oc get csv -n openshift-update-service
+oc get crd updateservices.updateservice.operator.openshift.io
+```
+
+If the CRD is absent, the operator was not in prep's mirror. Stop —
+that is a content gap and it goes back across the airgap. Do not
+install it from anywhere else.
+
+Read what prep generated before applying it. The `graphDataImage` is
+pinned by digest, and that digest changes every time prep re-mirrors:
+
+```sh
+# ===== RUN ON: THE CLUSTER =====
+: "${OCP_INSTALL_ROOT:?set it first -- see 01-intake.md}"
+oc apply -f ${OCP_INSTALL_ROOT}/handoff/cluster-resources/updateService.yaml
+oc -n openshift-update-service get updateservice
+oc -n openshift-update-service get pods
+```
+
+Each `updateservice-*` pod runs two containers — the graph builder and
+the policy engine. The graph builder's log is where a working instance
+announces itself; a builder that cannot reach the registry sits there
+looking healthy from the outside.
+
+```sh
+# ===== RUN ON: THE CLUSTER =====
+oc -n openshift-update-service logs -l app=updateservice -c graph-builder --tail=50
+```
+
+Then point the cluster version operator at the local policy engine
+instead of `api.openshift.com`:
+
+```sh
+# ===== RUN ON: THE CLUSTER =====
+OSUS_NAME=$(oc -n openshift-update-service get updateservice \
+  -o jsonpath='{.items[0].metadata.name}')
+OSUS_GRAPH="$(oc -n openshift-update-service get updateservice "${OSUS_NAME}" \
+  -o jsonpath='{.status.policyEngineURI}')/api/upgrades_info/v1/graph"
+echo "${OSUS_GRAPH}"
+oc patch clusterversion version --type merge \
+  -p "{\"spec\":{\"upstream\":\"${OSUS_GRAPH}\"}}"
+```
+
+Echo the URI before patching. An empty `policyEngineURI` produces a
+patch that sets `upstream` to a bare path, and the resulting CVO error
+blames the graph rather than the variable.
+
+The proof is that `oc adm upgrade` lists something:
+
+```sh
+# ===== RUN ON: THE CLUSTER =====
+oc adm upgrade
+oc get clusterversion version -o jsonpath='{.spec.upstream}{"\n"}'
+```
+
+**Two separate CA problems, and they fail at different layers.** Both
+are reported by everyone who has done this disconnected, and neither is
+obvious from the error:
+
+1. **OSUS to the mirror registry.** The `UpdateService` status reports
+   something like `RegistryCACertFound` / `NotConfigured`, complaining
+   that `image.config.openshift.io` has no `additionalTrustedCA`. The
+   fix is a `ConfigMap` in `openshift-config` referenced from
+   `image.config.openshift.io/cluster` under `spec.additionalTrustedCA`
+   — and its key is the registry's hostname with the colon before the
+   port replaced by **two periods**, because a colon is not usable in a
+   `ConfigMap` key. `registry.airgap.local:8443` becomes
+   `registry.airgap.local..8443`. Verify that spelling against the 4.21
+   documentation before typing it; it is exactly the sort of detail that
+   changes.
+2. **The CVO to the OSUS route.** Presents as `RemoteFailed` on
+   `oc adm upgrade` with `x509: certificate signed by unknown
+   authority` naming the policy-engine route. This is the cluster's own
+   ingress certificate, not the mirror's, and it is a different
+   `ConfigMap` in a different place.
+
+📌 **Handoff** The graph data image is pinned by digest, so it goes
+stale the moment prep re-mirrors. Whoever owns the Day-2 delta loop owns
+re-applying `updateService.yaml` with the new digest — see
+[13-day2.md](13-day2.md). A cluster whose OSUS silently serves last
+quarter's graph looks healthy and offers no upgrades.
 
 ---
 
@@ -135,17 +232,99 @@ Each mirrored source should appear with its `location` and `mirror`
 entries. An empty directory here with an applied IDMS means the MCP
 rollout has not reached this node.
 
-> **TODO:** needs validation on real hardware — questions 2 and 3. For
-> (2), the check that takes a pod's image reference, resolves it through
-> the node's registry configuration and shows which registry actually
-> served it. For (3), the evidence that no outbound pull was attempted —
-> which in a true airgap is best gathered at the firewall or the node's
-> own connection failures rather than inside the cluster.
+Question 2. The distinction that makes this answerable is between
+`.image` and `.imageID` on a container status: `.image` is what the
+manifest asked for, `.imageID` is what the kubelet resolved and pulled.
+A cluster where every `.image` says `quay.io` and every `.imageID` says
+the mirror is a cluster where IDMS is working exactly as intended.
+
+> 🚧 **DRAFT -- NOT VALIDATED.** Written from documentation, not executed
+> against a cluster. Verify before running. Replace this block with the
+> command as run, then update VALIDATION.md.
 >
-> The honest answer for (3) may be that the cluster cannot prove it
-> alone, and the evidence is a firewall log or a packet capture from the
-> network team. If so, say that, and make it a 📌 **Handoff** rather than
-> a cluster command.
+> The `.imageID` reasoning is the part to check first. Confirm against a
+> running cluster that CRI-O populates `.imageID` with the registry that
+> actually served the layer rather than echoing the requested reference
+> — if it echoes, this check reports success wrongly, which is worse
+> than no check at all. Verify it by deliberately reading a pod you know
+> was mirror-served before trusting the aggregate.
+
+```sh
+# ===== RUN ON: THE CLUSTER =====
+oc get pods -A -o jsonpath='{range .items[*]}{range .status.containerStatuses[*]}{.imageID}{"\n"}{end}{end}' \
+  | sort -u
+```
+
+Every line should begin with the mirror registry. The useful form is
+the inverse — list only what does not:
+
+```sh
+# ===== RUN ON: THE CLUSTER =====
+oc get pods -A -o jsonpath='{range .items[*]}{range .status.containerStatuses[*]}{.imageID}{"\n"}{end}{end}' \
+  | sort -u | grep -v '^registry.airgap.local:8443/'
+```
+
+Empty output is the pass, and it is the line worth capturing for
+chapter 12. Substitute your own mirror hostname; the literal above is
+prep's example and is not yours.
+
+Cross-check from the node, where the container runtime's own view is
+authoritative and the API server's is secondhand:
+
+```sh
+# ===== RUN ON: A NODE =====
+sudo crictl images --digests
+sudo crictl inspecti $(sudo crictl images -q | head -1) | head -40
+```
+
+`crictl inspecti` shows `repoDigests`, which is the reference as the
+runtime holds it. Also confirm the runtime config the MCO wrote
+actually enforces digest-only mirroring rather than merely offering the
+mirror as a first preference:
+
+```sh
+# ===== RUN ON: A NODE =====
+grep -A4 -E '^\[\[registry' /etc/containers/registries.conf.d/*.conf
+sudo crio config 2>/dev/null | grep -iE 'default_runtime|registries|insecure'
+```
+
+Each mirror entry written from an IDMS should carry
+`pull-from-mirror = "digest-only"`. An ITMS entry will not, by
+definition — that is what the tag variant is for — which is why
+`imageDigestSources` and `imageTagMirrorSet` are worth distinguishing
+in the evidence rather than lumping together.
+
+Question 3. The cluster can produce supporting evidence but it cannot
+produce proof, and it is worth being clear about which you are holding.
+
+> 🚧 **DRAFT -- NOT VALIDATED.** Written from documentation, not executed
+> against a cluster. Verify before running. Replace this block with the
+> command as run, then update VALIDATION.md.
+>
+> Uncertain: whether CRI-O logs a *failed* outbound attempt in a form
+> that greps cleanly, and whether the journal retention on a freshly
+> installed node reaches back to the install window at all. Check
+> `journalctl --disk-usage` and the oldest entry before concluding that
+> an empty result means anything.
+
+```sh
+# ===== RUN ON: A NODE =====
+sudo journalctl -u crio --no-pager --since "$(date -d '-1 day' '+%Y-%m-%d')" \
+  | grep -iE 'quay\.io|registry\.redhat\.io|registry\.access\.redhat\.com|cdn\.redhat\.com|sso\.redhat\.com' \
+  | tail -40
+sudo journalctl -u kubelet --no-pager | grep -iE 'ErrImagePull|ImagePullBackOff' | tail -20
+```
+
+Empty output is consistent with no outbound attempt. It is not the same
+as proof of no outbound attempt: a DNS lookup that failed before CRI-O
+logged anything leaves nothing here, and so does a journal that has
+already rotated. Say that in the evidence pack rather than letting an
+empty grep stand as a finding.
+
+The cluster-side result to record is therefore: *no node logged an
+attempt to reach an external registry during the observed window*, with
+the window stated. That is an honest sentence. "No node attempted an
+outbound pull" is not one, and the next section is why.
 
 📌 **Handoff** The network team can answer question 3 definitively and
 the cluster cannot. Ask them for a record of denied outbound attempts

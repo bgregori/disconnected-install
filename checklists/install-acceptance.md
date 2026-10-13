@@ -47,20 +47,40 @@ Environment: ______________________  Date: ____________  By: ____________
 - [ ] `sshKey` present and attributable to a named person
 - [ ] A copy kept **outside** the install directory, mode `0600`
 
-## 3. Manifests, before ignition
+## 3. Manifests, before the ISO
 
-- [ ] Disk encryption MachineConfig present for **`master` and
-      `worker`**, not just `master`
-- [ ] Mode decided and recorded: TPM v2 ☐ · Tang/NBDE ☐ · both ☐ ·
-      none, accepted by ISSO ☐
-- [ ] If Tang: servers reachable from the node network, thumbprints are
-      from the servers actually deployed
-- [ ] If TPM v2: TPM 2.0 present and enabled in firmware on every node
-- [ ] Chrony MachineConfig present, pointing at the enclave source
+Two staging points, and the items are not interchangeable. See
+[docs/03-manifests.md](../docs/03-manifests.md#the-window).
+
+**`openshift/`** — filled before anything is generated:
+
+- [ ] Chrony MachineConfig present for **`master` and `worker`**, not
+      just `master`, pointing at the enclave source
 - [ ] Default-deny project template in place, or deferred to day 1 with
       the note written into the evidence pack — not agreed verbally
 - [ ] Source manifests archived outside the install directory, and the
       archive is the one the evidence pack will carry
+
+**`cluster-manifests/agent-cluster-install.yaml`** — edited after
+`agent create cluster-manifests`:
+
+- [ ] `install-config.yaml` and `agent-config.yaml` backed up **before**
+      that command deleted them
+- [ ] `diskEncryption` block **read back out of the file**, not assumed.
+      An absent block is a valid configuration meaning no encryption,
+      and nothing downstream reports it
+- [ ] `enableOn: all` — not `masters`, and not absent
+- [ ] Mode decided and recorded: TPM v2 ☐ · Tang/NBDE ☐ ·
+      none, accepted by ISSO ☐
+- [ ] If the requirement was "TPM **and** Tang": raised with the ISSO
+      that this installer cannot express it, and the outcome recorded
+- [ ] If Tang: `tangServers` is a single-quoted JSON array, **every
+      entry has a `thumbprint`**, servers reachable from the node
+      network, thumbprints from the servers actually deployed
+- [ ] If TPM v2: TPM 2.0 present and enabled in firmware on every node,
+      and **reset in firmware** before the ISO was booted
+- [ ] A copy of the edited `agent-cluster-install.yaml` kept outside the
+      install directory, because regenerating the ISO discards it
 
 ## 4. Install
 

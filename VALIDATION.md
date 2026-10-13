@@ -12,7 +12,7 @@ readers need:
 The chapter structure, the ordering, the decisions and the failure modes
 are real and reasoned. The procedures are now drafted — written from
 documentation, never run — and every one of them carries a marker saying
-so. **96 drafted blocks, zero validated.**
+so. **95 drafted blocks, zero validated.**
 
 That ratio is the state of this repository, and it is the number to
 watch. It goes down one procedure at a time, and only by someone
@@ -164,7 +164,7 @@ to stand in front of a cluster and prove.
 |---|---|---|
 | [01 Intake](docs/01-intake.md) | 3 | **Mostly real.** Checks are generic shell or carried from prep. The mirror content gate, PTR records and the Keycloak `groups` claim are drafted. |
 | [02 install-config](docs/02-install-config.md) | 4 | **Partly real.** The three disconnected requirements and the pull secret come from prep. Topology, networking, schema validation and `agent-config.yaml` are drafted. |
-| [03 Manifests](docs/03-manifests.md) | 6 | **Drafted, and the chapter's premise is in question** — see the warning below. Disk encryption, chrony and the project template are drafted. |
+| [03 Manifests](docs/03-manifests.md) | 6 | **Rebuilt 2026-10-13 after the premise turned out to be wrong** — see *Resolved from documentation* below. Two staging points, not one window; disk encryption is a field, not a MachineConfig. Still drafted, now against the right installer. |
 | [04 Agent ISO](docs/04-agent-iso.md) | 3 | **Drafted.** The FIPS host requirement is from prep. Generation, boot and watch are drafted. No timings are given, deliberately. |
 | [05 First access](docs/05-first-access.md) | 3 | **Partly real.** Credential handling and the cluster-operator checks are real; bootstrap watch and the pull-path proof are drafted. |
 | [06 Day-1 config](docs/06-day1-cluster-config.md) | 3 | **Mostly real** — it is prep's post-install step, restated. OSUS and the full pull-path proof are drafted; the OSUS draft is the weakest in the repository. |
@@ -173,7 +173,7 @@ to stand in front of a cluster and prove.
 | [09 Compliance Operator](docs/09-compliance-operator.md) | 7 | **Partly real.** The baseline-first argument, capture commands and result taxonomy are real. Install manifests, `ScanSettingBinding` and label selectors are drafted. |
 | [10 Remediation](docs/10-remediation.md) | 8 | **Partly real.** Reboot economics, review discipline and delta capture are real. Review/apply/decline are drafted. Reboot timings are a drafted *method*, not figures. |
 | [11 Manual controls](docs/11-manual-controls.md) | 9 | **Mostly real as a process.** Banner (three distinct things), audit forwarding and RBAC review are drafted. |
-| [12 Evidence pack](docs/12-evidence-pack.md) | 1 | **Real.** Structure, not procedure — nothing here needs hardware. Its one `TODO` is a question for a human, not a hardware gap, and stays a `TODO`. |
+| [12 Evidence pack](docs/12-evidence-pack.md) | 0 | **Real.** Structure, not procedure — nothing here needs hardware. Its one `TODO` is a question for a human, not a hardware gap, and stays a `TODO`. |
 | [13 Day-2](docs/13-day2.md) | 9 | **Partly real.** The handback to prep and the drift table are real. Upgrade, scheduled scans and File Integrity are drafted. |
 | [topologies/sno](docs/topologies/sno.md) | 9 | **Outage semantics real, configuration drafted.** |
 | [topologies/compact](docs/topologies/compact.md) | 8 | **Outage semantics real, configuration drafted.** Rollout timings are a drafted method, not figures. |
@@ -185,14 +185,6 @@ to stand in front of a cluster and prove.
 Found while drafting, not yet resolved. Each is a real question about
 the existing content rather than a gap in it:
 
-- **Chapter 3's window may not exist in the agent workflow.** The
-  chapter is built around a pause between `create manifests` and
-  `create ignition-configs`, and the agent-based installer appears not
-  to have one — `openshift/` is a directory you create and fill before
-  generating anything. The ASCII diagram and the chapter's framing are
-  therefore suspect. The chapter states this beneath the diagram and
-  carries a self-invalidating check. **Resolve this first**; it is the
-  highest-stakes unresolved question in the repository.
 - **`NOT-APPLICABLE` versus `NOTAPPLICABLE`.** Chapter 9's results
   table prints the hyphenated form; upstream CRD documentation gives
   the unhyphenated one as the allowed value. A label selector copied
@@ -210,11 +202,60 @@ the existing content rather than a gap in it:
   login, so step 4 cannot read the authoritative group name until
   something like step 6 has happened. Handled inside step 4; the
   chapter-level ordering claim may still want revisiting.
-- **Chapter 2's `.bak` block fails on first run** — it copies
-  `install-config.yaml` before the file exists.
-- **Chapter 1's mirror gate omits a storage operator.** Both topology
-  pages need one (LVM Storage for single node, ODF for compact), which
-  is a mirror-gate item by chapter 1's own logic.
+
+### Resolved from documentation, not from hardware
+
+Closed by reading documentation and installer source. **None of this is
+validated** — the chapters affected still carry `DRAFT` markers, and the
+count above does not move. What changed is that the drafts are now
+derived from the right source rather than from the wrong installer.
+
+- **Chapter 3's window did not exist, and the chapter was rebuilt**
+  (2026-10-13). There is no `create manifests` / `create
+  ignition-configs` pair in the agent workflow. There are two staging
+  points: `openshift/`, which you create and fill before anything runs,
+  and `cluster-manifests/agent-cluster-install.yaml`, which
+  `agent create cluster-manifests` generates and you then edit.
+
+  The consequence was larger than the framing. **Disk encryption on the
+  agent-based installer is a `diskEncryption` field, not a
+  `MachineConfig`** — so the chapter's Butane-into-`openshift/` route
+  was the classic installer's and is withdrawn. Three things fell out
+  of that, each of which would have cost a reinstall:
+
+  - `enableOn` **defaults to `none`**. An absent block is a valid
+    configuration meaning no encryption, generated without complaint.
+  - `mode` takes a single value, `tpmv2` or `tang`. **There is no
+    threshold and no way to express "TPM and Tang"** — the combination
+    the chapter previously recommended for "decrypts only in this rack,
+    on this network". Sites that need it have to leave this install
+    method or relax the requirement.
+  - `tangServers` is a **JSON string containing an array of
+    `{"url","thumbprint"}`**, parsed with `json.Unmarshal`, thumbprint
+    mandatory. Red Hat's published example renders it as
+    `tangServers: "server1": "http://..."` — wrong shape, no thumbprint.
+    Copying the documented example produces a validation failure at
+    best and an unencrypted cluster at worst.
+
+  Sources: OCP 4.21 agent-based installer documentation §4.5;
+  `openshift/assisted-service` `api/hiveextension/v1beta1/agentclusterinstall_types.go`
+  and `pkg/tang/tang_server.go`; `openshift/installer`
+  `pkg/asset/agent/manifests/agentclusterinstall.go`. The last of these
+  also shows the installer validating `enableOn` against a **shorter**
+  list than the CRD allows — no `arbiters`, no comma-joined
+  combinations — and validating only when the block is present.
+
+  Still open, and still needing hardware: whether `agent create
+  cluster-manifests` preserves `openshift/` across a run; whether a file
+  in the wrong staging point is rejected or silently ignored; and
+  **which cipher this path selects on a `fips: true` cluster**, since
+  there is no Butane config to carry `openshift: fips: true` and no
+  cipher field to set.
+
+- **Chapter 2's `.bak` block** is fixed — split in two, with the reason
+  the single-block version failed written out.
+- **Chapter 1's mirror gate** now lists LVM Storage and ODF against the
+  topology that needs each.
 
 Beyond the chapters:
 

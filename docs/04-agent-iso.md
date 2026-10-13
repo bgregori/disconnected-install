@@ -41,38 +41,53 @@ including Red Hat's wording. It is not restated here.
 > command as run, then update VALIDATION.md.
 >
 > The command is documented. What has not been seen here is the thing
-> that matters most: **what the output looks like when `openshift/` was
-> empty.** An ISO generated without the disk-encryption MachineConfig is
-> byte-for-byte plausible, boots normally, and produces a working
+> that matters most: **what the output looks like when the inputs were
+> missing.** An ISO generated without chapter 3's `diskEncryption` block
+> is byte-for-byte plausible, boots normally, and produces a working
 > cluster with unencrypted disks. If the installer says nothing about
-> custom manifests in its output, there is no signal at all, and the
-> pre-flight count below is the only defence. Record what it actually
-> logs.
+> custom manifests or disk encryption in its output, there is no signal
+> at all, and the pre-flight below is the only defence. Record what it
+> actually logs.
 
-Count what is going in, immediately before generating. This is cheap and
-it is the last moment the question can be asked:
+Check both of chapter 3's staging points, immediately before
+generating. This is cheap and it is the last moment either question can
+be asked:
 
 ```sh
 # ===== RUN ON: THE INSTALL HOST =====
 : "${OCP_INSTALL_ROOT:?set it first -- see 01-intake.md}"
-ls -l ${OCP_INSTALL_ROOT}/cluster/openshift/
 ls -1 ${OCP_INSTALL_ROOT}/cluster/openshift/ | wc -l
+grep -A4 'diskEncryption' \
+  ${OCP_INSTALL_ROOT}/cluster/cluster-manifests/agent-cluster-install.yaml
 ```
 
-Four files on a cluster using TPM or Tang: two storage, two chrony. If
-that number is not what chapter 3 left, stop here.
+Two files in `openshift/` — the chrony pair — plus whatever the project
+template added. If that number is not what chapter 3 left, stop here.
 
-Take the copies now, because the next command destroys the originals:
+The `grep` is the more important of the two, and **an empty result is
+the failure, not a clean pass.** `diskEncryption` absent means
+`enableOn` defaults to `none`, the ISO builds without complaint, and
+every node comes up unencrypted. Read the four lines back and check
+`enableOn` and `mode` say what you decided; do not settle for the grep
+exiting zero.
+
+If `install-config.yaml` and `agent-config.yaml` are still present —
+they will not be, if chapter 3 ran — copy them out now:
 
 ```sh
 # ===== RUN ON: THE INSTALL HOST =====
 : "${OCP_INSTALL_ROOT:?set it first -- see 01-intake.md}"
-cp ${OCP_INSTALL_ROOT}/cluster/install-config.yaml \
-   ${OCP_INSTALL_ROOT}/install-config.yaml.bak
-cp ${OCP_INSTALL_ROOT}/cluster/agent-config.yaml \
-   ${OCP_INSTALL_ROOT}/agent-config.yaml.bak
-chmod 600 ${OCP_INSTALL_ROOT}/*.bak
+cp -n ${OCP_INSTALL_ROOT}/cluster/install-config.yaml \
+      ${OCP_INSTALL_ROOT}/install-config.yaml.bak 2>/dev/null || true
+cp -n ${OCP_INSTALL_ROOT}/cluster/agent-config.yaml \
+      ${OCP_INSTALL_ROOT}/agent-config.yaml.bak 2>/dev/null || true
+ls -l ${OCP_INSTALL_ROOT}/*.bak
 ```
+
+`-n` so this cannot overwrite the good copies chapter 3 took with
+nothing. The `ls` is the check: if the two `.bak` files are not there,
+the originals are gone and unbacked, and the install directory is no
+longer reproducible. Stop and reconstruct them before generating.
 
 Then generate:
 
@@ -83,11 +98,11 @@ openshift-install-fips agent create image \
   --dir ${OCP_INSTALL_ROOT}/cluster --log-level=info
 ```
 
-**`agent create image` consumes and deletes both `install-config.yaml`
-and `agent-config.yaml`.** They are gone from the install directory
-when it finishes. This is not a failure mode you work around once — it
-happens on every regeneration, so the `.bak` copies are part of the
-procedure rather than a precaution.
+**Both `agent create cluster-manifests` and `agent create image` consume
+and delete `install-config.yaml` and `agent-config.yaml`.** Chapter 3's
+run is what usually removes them; this one removes whatever is left.
+Either way it happens on every regeneration, so the `.bak` copies are
+part of the procedure rather than a precaution.
 
 Two things in the output are worth reading rather than scrolling past:
 
@@ -105,8 +120,13 @@ What is already known and does not need validating:
 
 - The install directory is destroyed and rebuilt by re-running earlier
   stages. If you need to regenerate, assume you are starting from
-  `install-config.yaml.bak` and the `manifests-src/` directory from
-  chapter 3.
+  `install-config.yaml.bak`, `agent-config.yaml.bak` and the
+  `manifests-src/` directory from chapter 3 — **and that the
+  `diskEncryption` block you hand-edited into
+  `cluster-manifests/agent-cluster-install.yaml` is gone with it.**
+  Regenerating is the common way that block is silently lost. Keep a
+  copy of the edited `agent-cluster-install.yaml` alongside the `.bak`
+  files and re-apply it every time.
 - The ISO embeds the mirror registry details, the CA and the pull secret.
   **It is a credential-bearing artifact.** Treat the file, and any copy
   of it on a share or an iDRAC virtual media mount, accordingly.

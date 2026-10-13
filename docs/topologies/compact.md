@@ -387,9 +387,9 @@ single drifted node is exactly what the File Integrity Operator in
 
 - `fips: true`, disk encryption, etcd encryption, external IdP,
   `kubeadmin` deletion — all identical
-- Disk encryption MachineConfigs are still needed for **both** the
-  `master` and `worker` pools even though no separate worker nodes
-  exist. A worker pool that gains a node later must not gain an
-  unencrypted one.
+- Disk encryption still wants `enableOn: all`, not `masters`, even
+  though every node is a control-plane node today. A worker pool that
+  gains a node later must not gain an unencrypted one, and `masters` is
+  the plausible-looking answer that lets it.
 - The mirror registry is still a production dependency
 - The evidence pack is the same pack

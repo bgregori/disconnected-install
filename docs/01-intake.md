@@ -502,13 +502,18 @@ means a reinstall.
 
 1. **`fips: true`.** Set at install, immutable afterwards. See
    [02-install-config.md](02-install-config.md).
-2. **Boot-disk encryption, and which mode.** TPM v2, Tang/NBDE, or both
-   with a threshold. Configured as a `MachineConfig` in the window between
-   `create manifests` and `create ignition-configs` — see
+2. **Boot-disk encryption, and which mode.** TPM v2 **or** Tang/NBDE —
+   on the agent-based installer they do not combine, so decide which
+   single failure mode the site accepts. Configured as a
+   `diskEncryption` block in
+   `cluster-manifests/agent-cluster-install.yaml`, which exists only
+   after `agent create cluster-manifests` has run — see
    [03-manifests.md](03-manifests.md). Prep raises this at handoff
    precisely because it is not an `install-config.yaml` field and so gets
    missed:
    [prep 08 — disk encryption](https://github.com/bgregori/disconnected-prep/blob/main/docs/08-handoff.md#disk-encryption-the-other-decision-made-at-install).
+   The field **defaults to no encryption**, so "we didn't decide" and
+   "we decided against it" produce the same cluster.
 3. **Topology.** Single node, three-node compact, or multi-node. Replica
    counts are install-time. See
    [topologies/sno.md](topologies/sno.md) and

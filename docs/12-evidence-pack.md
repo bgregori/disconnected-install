@@ -319,10 +319,13 @@ The thing that is hardest to reconstruct and easiest to capture.
 - **The terminal transcript.** Every script in this repository echoes
   each command before running it, so the transcript is an accurate
   record of what was done on the host. Keep it — see below.
-- **The manifests from chapter 3** — the disk encryption MachineConfigs,
-  the chrony configuration, the project template. These are the files
-  that made the cluster what it is and they do not exist anywhere else
-  after the install directory is cleaned up.
+- **The manifests from chapter 3**, from both staging points — the
+  chrony configuration and the project template out of `openshift/`,
+  and the edited `agent-cluster-install.yaml` carrying the
+  `diskEncryption` block out of `cluster-manifests/`. These are the
+  files that made the cluster what it is and they do not exist anywhere
+  else after the install directory is cleaned up. The second one is the
+  easier to lose: regenerating the ISO discards it.
 - **Per-node disk encryption proof:**
 
 ```sh

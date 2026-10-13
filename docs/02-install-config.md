@@ -195,7 +195,7 @@ machines", which is not a thing the installer builds. The `compute`
 stanza must still be present with `replicas: 0`; deleting it is not the
 same as zeroing it.
 
-`apiVIPs` and `ingressVIPs` are **lists** (plural, since 4.12). The
+`apiVIPs` and `ingressVIPs` are **lists**. The
 singular `apiVIP`/`ingressVIP` forms still parse in some versions and
 are the kind of thing a copied example carries in silently.
 

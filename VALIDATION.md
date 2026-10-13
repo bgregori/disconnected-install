@@ -451,10 +451,27 @@ statuses in this file; those exist in the schema and are not used here.
   OpenShift authentication documentation. Use it to investigate; cite
   the documented ones.
 
-**Still open, and stated rather than glossed:** the content's control
-file is titled for **OpenShift 4.12** and pinned to V2R6, while this
-repository targets 4.21. Whether DISA has published a later revision,
-or one specific to 4.21, was not established. Also unresolved: whether
+**On the benchmark's title, checked directly 2026-10-13.** DISA's
+benchmark is named *"Red Hat OpenShift Container Platform 4.12
+Security Technical Implementation Guide"* and the content's control
+file still carries that string at **V2R6**, which is the current
+revision — `products/ocp4/profiles/` ships `v2r3` and `v2r6` and
+nothing later. There is no 4.21-specific STIG and no V2R7.
+
+**That is a title, not a scope.** The benchmark applies to OpenShift
+4.x, this cluster included; DISA's own guidance where only an older
+STIG exists is to review the check and fix procedures against the
+newer product, which is what wave 2 did. Nothing in this repository is
+based on 4.12, derived from 4.12, or verified against 4.12
+documentation — everything here is checked against 4.21.
+
+It stays recorded because an assessor reading the pack will see
+"4.12" on the benchmark and ask, and the answer should already be
+written down. Deleting the fact to make the repository look current
+would be the same move as removing a `DRAFT` marker without running
+the command.
+
+**Still open:** whether
 4.21 ships a default RoleBinding letting ordinary users read the `motd`
 ConfigMap — which decides whether the CLI banner works at all, and is
 a one-command check on a real cluster.

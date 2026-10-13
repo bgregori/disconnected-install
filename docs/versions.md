@@ -53,9 +53,22 @@ same defect as a `DRAFT` marker removed without running the command.
 | | |
 |---|---|
 | OpenShift | **4.21** (prep's measured run: 4.21.34) |
+| Documentation checked | OpenShift **4.21** throughout |
 | Architecture | `amd64` / `x86_64` only |
-| STIG benchmark | **V2R6** |
+| STIG benchmark | **V2R6** — the current revision; there is no V2R7 and no 4.21-specific STIG |
+| Compliance Operator | source read at `master`, cross-checked to release **v1.8.2** |
 | Date | 2026-10-13 |
+
+Where this repository cites Red Hat documentation — including the two
+places it says that documentation is **wrong** — the citation is to the
+4.21 page, checked at that version, not to an older release that
+happened to be easier to find. Both errors were confirmed still present
+at 4.21.
+
+Nothing here is derived from, verified against, or assumed from any
+earlier release. The single "4.12" string anywhere in the repository is
+DISA's own name for the benchmark, discussed below and kept
+deliberately.
 
 ---
 
@@ -69,7 +82,6 @@ same defect as a `DRAFT` marker removed without running the command.
 | Ignition spec version in rendered MachineConfigs | whatever `butane` emits | [03](03-manifests.md) | Release-specific. Never hand-pick it. |
 | Operator catalog index tag | `redhat-operator-index:v4.21` | [01](01-intake.md#the-mirror-gate) | Tagged by minor. The one tagged thing in an otherwise digest-referenced mirror. |
 | `networkType` supported values | `OVNKubernetes` only | [02](02-install-config.md) | OpenShiftSDN was removed. Nothing has been added since, but this is the field that would change. |
-| `apiVIPs` / `ingressVIPs` are lists | plural since 4.12 | [02](02-install-config.md) | A floor, not a moving target — safe at any version ≥ 4.12. |
 | Agent installer `diskEncryption.enableOn` accepted values | `none`, `all`, `masters`, `workers` | [03](03-manifests.md) | The installer validates against a **narrower** set than the underlying CRD allows. Both sides can move independently. |
 | Single-node `platform` value the agent installer accepts | unverified | [sno](topologies/sno.md) | Has moved between releases. |
 | oc-mirror major version and output layout | v2 — IDMS/ITMS, not ICSP | [06](06-day1-cluster-config.md) | v2 replaced ICSP with IDMS/ITMS and changed the output file names. Prep owns the mirror; this repo consumes its layout. |
@@ -80,7 +92,7 @@ same defect as a `DRAFT` marker removed without running the command.
 | Fact | At 4.21 | Chapter | Why it moves |
 |---|---|---|---|
 | STIG benchmark revision | **V2R6** | [09](09-compliance-operator.md) | DISA publishes revisions on its own schedule. Rule IDs are **not** stable across them — see [the rule-ID policy](../README.md#on-stig-rule-ids). |
-| What the benchmark content is titled for | **OpenShift 4.12** | [09](09-compliance-operator.md) | The content file still names 4.12 while this repo targets 4.21. Whether DISA has published anything newer is **unestablished** — the gap is real and is recorded rather than glossed. |
+| What DISA named the benchmark | *"Red Hat OpenShift Container Platform 4.12 STIG"* | [09](09-compliance-operator.md) | **A title, not a scope.** DISA has not renamed it since first publication; V2R6 still carries it and is the current revision. It is the benchmark for OpenShift 4.x, this cluster included. Nothing in this repository is built on 4.12 — but an assessor will see that string, and so should you, before they ask. |
 | Profile names | `ocp4-stig`, `ocp4-stig-node`, `rhcos4-stig`, plus `-v2r6` pinned aliases | [09](09-compliance-operator.md) | The pinned names carry the revision. The unversioned ones are aliases that advance silently, which is why chapter 9 says to pin. |
 | Compliance Operator version | from the CSV; moves independently of the cluster | [09](09-compliance-operator.md) | A layered operator on its own cadence. Content versions move with it, not with OpenShift. |
 | Whether the operator can map a check to a `CNTR-OS-*` ID | **no**, on every released version | [appendix](appendix-stig-cluster.md#the-cluster-will-probably-not-tell-you-the-control-id) | The parser exists upstream but is unreleased, and the released annotation is broken by a content URL change. This will become *yes* at some version. |

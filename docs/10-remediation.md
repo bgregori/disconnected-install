@@ -268,14 +268,18 @@ named `75-<scan-name>-<rule-name>`, with a `-1`, `-2` suffix for the
 second and subsequent objects of a multi-object fix. Twenty applied
 node remediations means twenty `75-` objects.
 
-> ⚠️ **Red Hat's documentation says otherwise, and it is wrong.** The
-> Compliance Operator chapter states that remediations are rendered
-> into a MachineConfig named `75-$scan-name-$suite-name` — a single
-> object, with the suite name in it. The suite name appears nowhere in
-> the real name, and there is no aggregation step in the operator at
-> all. The same documentation page contradicts itself a few paragraphs
-> later by listing four separate `75-<scan>-<rule>` objects from one
-> re-scan.
+> ⚠️ **Red Hat's 4.21 documentation says otherwise, and it is wrong.**
+> *Managing Compliance Operator remediation* states that an applied
+> remediation "and all other applied remediations" are rendered into a
+> **single** MachineConfig named `75-$scan-name-$suite-name`. The
+> suite name appears nowhere in the real name, and there is no
+> aggregation step in the operator at all.
+>
+> The same page contradicts itself: its own worked example of a
+> re-scan produces `75-worker-scan-chronyd-or-ntpd-specify-remote-server`
+> — which is `75-<scan>-<rule>`, and is one of four such objects.
+> Checked against 4.21, not an older release; this text has been
+> carried forward unchanged for many releases.
 >
 > This matters because a reviewer checking your work against
 > docs.redhat.com will think the corrected text is the error. The
@@ -467,7 +471,11 @@ oc get events -n openshift-compliance \
 
 Earlier drafts of this chapter said that a remediation in `NeedsReview`
 holds the MachineConfigPool paused by design. **That is wrong, and so
-is Red Hat's documentation, which says the same thing.**
+is Red Hat's documentation, which says the same thing** — the 4.21
+page still carries it verbatim: *"If one or more remediations are in a
+`NeedsReview` state, the machine config pool remains paused."* It is
+inherited from a Compliance Operator 0.1.44 release note and has never
+been corrected.
 
 The operator explicitly *skips* `NeedsReview` remediations when
 deciding whether to unpause — it emits a `CannotRemediate` warning

@@ -87,7 +87,8 @@ per cluster shape: [single node](docs/topologies/sno.md) ·
 written for the general case; read the topology page alongside them rather
 than instead of them.
 
-Also: [troubleshooting](docs/troubleshooting.md) ·
+Also: [versions](docs/versions.md) ·
+[troubleshooting](docs/troubleshooting.md) ·
 [STIG on a cluster](docs/appendix-stig-cluster.md) ·
 [install acceptance checklist](checklists/install-acceptance.md) ·
 [ATO evidence checklist](checklists/ato-evidence.md) ·
@@ -197,6 +198,11 @@ Markers used throughout:
 > and reasoning, but never executed against a cluster. Verify before
 > running.
 
+> 🔄 **VERSION-COUPLED (4.21).** — a fact that is true of this release
+> and will stop being true of some later one. Collected in
+> [docs/versions.md](docs/versions.md), which is the page to walk when
+> you move versions.
+
 That exact string is the marker, and it is the only form that counts.
 When writing *about* the convention rather than marking a block — as
 this section does, and as
@@ -289,8 +295,30 @@ record the revision, because the IDs are not stable across them.
 
 ## Versions
 
-Written against OpenShift 4.21, to match
+**Written and measured against OpenShift 4.21**, matching
 [disconnected-prep](https://github.com/bgregori/disconnected-prep)'s
-measured run. Compliance Operator content versions are tied to the
-operator version mirrored, not to the cluster version, and the two move
-independently — see [09-compliance-operator.md](docs/09-compliance-operator.md).
+run. That is the initial target, **not a pin.**
+
+The procedures are meant to carry forward, and the only way they can is
+if the facts that move with the release are collected rather than
+scattered through fourteen chapters as monospaced numbers that look
+permanent. They are collected in **[docs/versions.md](docs/versions.md)**,
+with a 🔄 marker at each point of use. Walk that page before using
+these docs against anything other than 4.21; it is short on purpose,
+and it also lists what you do *not* need to re-check.
+
+In commands, the version is `${OCP_VERSION}` and `${OCP_MINOR}`, set
+once in `config/install.env`. Where a literal appears in a chapter it
+is either a worked example or a fact with a 🔄 beside it.
+
+Three things state the target version — this README, `versions.md` and
+`config/install.env.example` — and
+[`scripts/check-docs.py`](scripts/README.md) fails if they disagree.
+A version bump that lands in one place and not the others is the same
+class of defect as a draft count that drifts.
+
+Compliance Operator content versions are tied to the operator version
+mirrored, not to the cluster version, and the two move independently —
+see [09-compliance-operator.md](docs/09-compliance-operator.md). The
+STIG benchmark revision moves on a third schedule again, which is why
+rule IDs in this repository carry one.

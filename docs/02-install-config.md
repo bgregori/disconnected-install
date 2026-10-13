@@ -242,7 +242,9 @@ networking:
 
 Four things, each with a different failure:
 
-- **`networkType: OVNKubernetes`.** The only supported value on 4.21.
+- **`networkType: OVNKubernetes`.** The only supported value on 4.21
+  — OpenShiftSDN is gone. See [versions.md](versions.md); this is the
+  field that would change if anything were added.
   State it rather than defaulting it, because the evidence pack has to
   name the CNI.
 - **`machineNetwork` must contain every node address and both VIPs.**

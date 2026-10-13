@@ -447,6 +447,11 @@ oc get clusteroperator kube-apiserver -w
 > short: the benchmark is pinned to an older logging line than the
 > platform ships.
 >
+> 🔄 **VERSION-COUPLED (4.21).** The API group, the collector and the
+> supported Logging versions all move — see
+> [versions.md](versions.md). This is the most version-sensitive
+> section in the repository.
+>
 > **Version matters as a mirror-gate item, not just a detail.** OCP
 > 4.21 is supported by Logging **6.6** or **6.5**; 6.4 reached end of
 > maintenance in July 2026. Whichever prep mirrored is what you have,

@@ -637,6 +637,15 @@ apply a MachineConfig to.
 > node's `chrony.conf` has not been established here — assume it does
 > not, and set both.
 
+> 🔄 **VERSION-COUPLED (4.21).** Re-check at your version — see
+> [versions.md](versions.md).
+
+The Butane spec `version` tracks the OpenShift **minor** exactly —
+`4.21.0` for a 4.21 cluster, `4.22.0` for 4.22, with the trailing `.0`
+always zero regardless of your z-stream. Getting it wrong is one of
+the few failures in this chapter that is loud: `butane` rejects an
+unknown spec version rather than guessing.
+
 ```yaml
 # ===== EDIT IN: ${OCP_INSTALL_ROOT}/manifests-src/98-master-chrony.bu =====
 variant: openshift

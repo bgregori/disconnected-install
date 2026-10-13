@@ -375,14 +375,23 @@ sudo update-ca-trust extract
 
 Then the catalog, which is the one tagged thing in the mirror:
 
+> 🔄 **VERSION-COUPLED (4.21).** Re-check at your version — see
+> [versions.md](versions.md).
+
+The catalog index is tagged by **minor** version, which makes it the
+one tagged reference in an otherwise digest-referenced mirror. Export
+it rather than typing it, so the tag and the cluster cannot disagree:
+
 ```sh
 # ===== RUN ON: THE INSTALL HOST =====
 : "${OCP_INSTALL_ROOT:?set it first -- see 01-intake.md}"
-oc image info registry.airgap.local:8443/redhat/redhat-operator-index:v4.21
+: "${OCP_MINOR:?set it first -- see config/install.env.example}"
+CATALOG=registry.airgap.local:8443/redhat/redhat-operator-index:v${OCP_MINOR}
+
+oc image info ${CATALOG}
 
 mkdir -p ${OCP_INSTALL_ROOT}/catalog-check
-oc image extract \
-  registry.airgap.local:8443/redhat/redhat-operator-index:v4.21 \
+oc image extract ${CATALOG} \
   --path /configs/:${OCP_INSTALL_ROOT}/catalog-check/
 
 ls ${OCP_INSTALL_ROOT}/catalog-check/ | grep -E 'compliance|file-integrity'

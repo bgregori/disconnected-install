@@ -51,6 +51,13 @@ DRAFT_ANY = re.compile(r"🚧 \*\*DRAFT")
 # the scheme rather than subject to it.
 COUNTED_DIRS = ("docs",)
 
+# A fact that is true of one OpenShift release and not of OpenShift.
+# Same shape as the draft marker and the same reasoning: a reader with a
+# printed copy cannot tell a fact that holds forever from one that held
+# in October 2026, and the second stops being true silently.
+VERSION_MARKER = re.compile(r"🔄 \*\*VERSION-COUPLED \(([^)]+)\)\.\*\*")
+VERSION_ANY = re.compile(r"🔄 \*\*VERSION")
+
 HOST_MARKER = re.compile(r"=====\s*(RUN ON|EDIT IN):")
 FENCE = re.compile(r"^(\s*)```(\S*)")
 LINK = re.compile(r"\]\(([^)]+)\)")
@@ -261,8 +268,74 @@ def check_links():
     return problems, f"{checked} relative links resolve"
 
 
+def check_versions():
+    """The target version is stated in three places. They must agree."""
+    problems = []
+
+    versions_md = os.path.join(REPO_ROOT, "docs", "versions.md")
+    if not os.path.exists(versions_md):
+        return ["docs/versions.md is missing; it is where version-coupled facts live"], ""
+
+    # docs/versions.md: | OpenShift | **4.21** (prep's measured run: 4.21.34) |
+    text = read(versions_md)
+    match = re.search(r"\|\s*OpenShift\s*\|\s*\*\*([0-9]+\.[0-9]+)\*\*", text)
+    if not match:
+        return (
+            ["docs/versions.md: no 'Measured against' OpenShift row found; "
+             "that row is what the other two files are checked against"],
+            "",
+        )
+    target = match.group(1)
+
+    # README.md prose
+    readme = read(os.path.join(REPO_ROOT, "README.md"))
+    stated = set(re.findall(r"measured against OpenShift ([0-9]+\.[0-9]+)", readme))
+    if not stated:
+        problems.append("README.md: no 'measured against OpenShift <x.y>' statement")
+    for value in stated - {target}:
+        problems.append(
+            f"README.md says measured against {value}, docs/versions.md says {target}"
+        )
+
+    # config/install.env.example: OCP_VERSION="4.21.34"
+    env = read(os.path.join(REPO_ROOT, "config", "install.env.example"))
+    match = re.search(r'^OCP_VERSION="([0-9]+\.[0-9]+)(?:\.[0-9]+)?"', env, re.M)
+    if not match:
+        problems.append("config/install.env.example: no OCP_VERSION found")
+    elif match.group(1) != target:
+        problems.append(
+            f"config/install.env.example OCP_VERSION is {match.group(1)}.x, "
+            f"docs/versions.md says {target}"
+        )
+
+    # OCP_MINOR must be derived, never typed -- the whole point is that the
+    # two cannot drift.
+    if "OCP_MINOR=" in env and not re.search(r'OCP_MINOR="\$\{OCP_VERSION%', env):
+        problems.append(
+            "config/install.env.example: OCP_MINOR should derive from "
+            'OCP_VERSION (${OCP_VERSION%.*}), not be typed'
+        )
+
+    # Markers must be the canonical form, for the same reason draft markers
+    # must: a near-miss is a marker nobody can find later.
+    marked = 0
+    for path in markdown_files():
+        for number, line in enumerate(read(path).split("\n"), 1):
+            for match in VERSION_ANY.finditer(line):
+                if VERSION_MARKER.match(line[match.start():]):
+                    marked += 1
+                    continue
+                problems.append(
+                    f"{rel(path)}:{number}: malformed version marker. Use "
+                    f"'🔄 **VERSION-COUPLED (<version>).**'"
+                )
+
+    return problems, f"target {target} agrees across 3 files, {marked} markers"
+
+
 CHECKS = (
     ("drafts", check_drafts),
+    ("versions", check_versions),
     ("hosts", check_host_markers),
     ("links", check_links),
 )

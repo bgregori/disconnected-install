@@ -41,9 +41,15 @@ change onto a pool that is mid-rollout doubles the outage and makes the
 result hard to reason about.
 
 Signature artifacts, if prep generated them, are **files, not a
-directory** — oc-mirror 4.21 writes `signature-configmap.{json,yaml}`,
-which contradicts some upstream documentation. Check what you actually
-received:
+directory** — oc-mirror v2 at 4.21 writes `signature-configmap.{json,yaml}`,
+which contradicts some upstream documentation.
+
+> 🔄 **VERSION-COUPLED (4.21).** File names and oc-mirror's output
+> layout are exactly the kind of thing that changes without ceremony —
+> see [versions.md](versions.md). Do not match on the name; look at
+> what arrived.
+
+Check what you actually received:
 
 ```sh
 # ===== RUN ON: THE CLUSTER =====

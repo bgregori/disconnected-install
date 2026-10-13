@@ -268,6 +268,9 @@ oc get profilebundle -n openshift-compliance \
 
 Three commands, three different facts, and all three go in the pack.
 
+> 🔄 **VERSION-COUPLED (benchmark V2R6).** Re-check at your version — see
+> [versions.md](versions.md).
+
 **The benchmark revision is `Profile.version`** — a top-level field,
 printed as the `VERSION` column of `oc get profiles.compliance`, and it
 reads `V2R6` on current content. An earlier draft said it was "carried

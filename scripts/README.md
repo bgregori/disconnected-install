@@ -76,6 +76,10 @@ on a laptop or in CI:
   totals in that file and the top-level README
 - **hosts** — every `sh` / `bash` / `yaml` block opens with a
   `RUN ON:` or `EDIT IN:` marker on its first line
+- **versions** — the target OpenShift version stated in this README's
+  parent, [docs/versions.md](../docs/versions.md) and
+  `config/install.env.example` all agree, `OCP_MINOR` is derived rather
+  than typed, and every 🔄 version marker is well formed
 - **links** — every relative link resolves, file and heading anchor
   both
 

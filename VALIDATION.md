@@ -232,6 +232,7 @@ to stand in front of a cluster and prove.
 | [topologies/sno](docs/topologies/sno.md) | 9 | **Outage semantics real, configuration drafted.** |
 | [topologies/compact](docs/topologies/compact.md) | 8 | **Outage semantics real, configuration drafted.** Rollout timings are a drafted method, not figures. |
 | [troubleshooting](docs/troubleshooting.md) | 7 | **Partly real.** Failures inherited from prep are written and validated; cluster-side diagnostics are drafted. |
+| [versions](docs/versions.md) | 0 | **Real, and not procedure.** The list of facts in these docs that move with the OpenShift release, and the page to walk when the version changes. Nothing here needs hardware; what it needs is re-reading at each bump. |
 | [appendix STIG](docs/appendix-stig-cluster.md) | 3 | **Conceptual.** Not procedure. The rule-ID policy and the FIPS/benchmark interaction are reasoned, not measured. |
 
 ### Known problems in the drafted text

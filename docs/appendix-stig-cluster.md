@@ -103,6 +103,54 @@ benchmark revision with every result. That capture is what makes a
 citation re-checkable a year later, and a citation that cannot be
 re-checked is a liability regardless of whether it happens to be right.
 
+### The cluster will probably not tell you the control ID
+
+The obvious objection to all of the above is that the mapping ought to
+be mechanical — the operator knows which STIG control each rule
+implements, so read it off the cluster and stop agonising. It does not
+work, for three reasons, and they compound.
+
+**The annotation that would carry it is not in any released operator.**
+Upstream gained parsing for STIG control IDs, SRGs and CCIs in mid-2026,
+after the most recent release. On a released operator there is no
+`control.compliance.openshift.io/STIGID` annotation to read.
+
+**The older annotation that does exist is silently broken.** Released
+operators match the benchmark reference by URL, against
+`public.cyber.mil`. The content moved to `www.cyber.mil` in September
+2025. Any cluster pairing a released operator with current content gets
+**no annotation at all** — not a wrong one, an absent one, with no
+error. Which is the quiet kind of failure this repository keeps
+finding.
+
+**And the mapping is many-to-many anyway.** One `CNTR-OS-*` control
+lists several rules; one rule appears under several controls. There is
+no "the" control ID for a check result. A single `FAIL` can implicate
+more than one control, and a control is satisfied only when every rule
+under it passes — which is a judgement, not a lookup.
+
+Check whether your cluster has anything at all:
+
+```sh
+# ===== RUN ON: THE CLUSTER =====
+oc get rule.compliance -n openshift-compliance -o json |
+  jq -r '.items[]
+         | select(.metadata.annotations["control.compliance.openshift.io/STIGID"])
+         | .metadata.name' | head
+```
+
+Empty is the expected answer today. When it is, the control mapping is
+**not derivable from the cluster**, and the system of record is the
+content's own control file at the revision matching your
+`Profile.version` — which is where the nine rule IDs in this repository
+came from, and why they carry a revision.
+
+> 🚧 **DRAFT -- NOT VALIDATED.** The operator behaviour here is read
+> from upstream source and release tags, not from a cluster, and
+> whether Red Hat's shipped build carries downstream patches that
+> change it is unknown. Run the command above before relying on either
+> outcome.
+
 ---
 
 ## Immutable decisions

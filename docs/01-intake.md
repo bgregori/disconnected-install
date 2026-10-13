@@ -314,6 +314,7 @@ not already in the registry.** Specifically this repository later needs
 | Chapter | Content |
 |---|---|
 | [09](09-compliance-operator.md) | `compliance-operator`, and the `ocp4-stig` / `ocp4-stig-node` / `rhcos4-stig` profile content it ships — **three profiles, not two** |
+| [11](11-manual-controls.md) | **`cluster-logging`** — the Red Hat OpenShift Logging Operator, for audit forwarding. Channel `stable-6.6` or `stable-6.5`; 6.4 is end-of-maintenance and 5.x will not work on 4.21. Two STIG controls rest on this, one of them **high**. |
 | [13](13-day2.md) | `file-integrity-operator` |
 | [05](05-first-access.md), [troubleshooting](troubleshooting.md) | `must-gather` and `support-tools` diagnostic images |
 | [sno](topologies/sno.md) | **LVM Storage** — if the topology is single node |

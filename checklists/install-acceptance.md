@@ -179,10 +179,26 @@ Two staging points, and the items are not interchangeable. See
 
 ## 10. Manual controls
 
-- [ ] Banner: console, CLI and node SSH — all three, with the approved
-      wording
+- [ ] Banner on all **four** surfaces, with the approved wording read
+      by a human: console pre-login, IdP chooser, console
+      post-login, `oc` CLI. The scan checks only that the objects
+      exist — four blank banners pass it
+- [ ] `oc` banner confirmed visible **as an ordinary user**, not as
+      yourself: a permissions failure on the `motd` ConfigMap is
+      swallowed silently and the banner simply never appears
+- [ ] Node SSH: **not** a banner. `sshd` is disabled per
+      CNTR-OS-001010, and any operational procedure that assumes SSH
+      to nodes has been reconciled with that
+- [ ] `collect-audit-logs` bound to the collector service account
+      **before** `audit` was added to `inputRefs` — the other order
+      deletes the collector DaemonSet and stops all log collection
+- [ ] `ClusterLogForwarder` reports `Authorized`, and the DaemonSet
+      exists
 - [ ] Audit forwarding configured **and** records confirmed arriving at
       the destination
+- [ ] Audit profile is `WriteRequestBodies`, and the pack records the
+      exception: `Secret`, `Route` and `OAuthClient` are logged at
+      metadata level only
 - [ ] Retention period confirmed by the destination's owner
 - [ ] RBAC reviewed, with a reviewer name and date
 - [ ] MFA attestation obtained from the IdP owner

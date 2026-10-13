@@ -46,7 +46,7 @@ back to [prep's Day-2 delta loop](https://github.com/bgregori/disconnected-prep/
 
 > ⚠️ **This repository is a first draft.** The chapter structure, the
 > conventions and the decisions that have to be made are real. The
-> procedures are now written, and **94 of them are marked**
+> procedures are now written, and **95 of them are marked**
 > `> 🚧 **DRAFT -- NOT VALIDATED.**`.
 >
 > **Nothing here has been executed against a cluster.** Where a command

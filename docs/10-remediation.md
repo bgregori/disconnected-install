@@ -53,11 +53,17 @@ For each one, three questions and a written answer:
 > against a cluster. Verify before running. Replace this block with the
 > command as run, then update VALIDATION.md.
 >
-> The payload is believed to live at `spec.current.object` — a complete
-> Kubernetes object the operator will create. Sources disagree on
-> whether the path is `spec.current.object` or `spec.object.current`, so
-> **start with the full `-o yaml` below and read where it actually is**
-> before using the `jsonpath` form in a loop. A `jsonpath` that misses
+> The payload is at **`spec.current.object`** — confirmed; the
+> `spec.object.current` form that some sources give does not exist.
+> What is still drafted is everything below about reading it in bulk.
+>
+> **But `spec.current.object` is not unconditionally what gets
+> applied.** If `spec.outdated.object` is present, the operator applies
+> *that* instead. An outdated payload appears when the content changed
+> under a remediation, it requires an administrator to clear it, and a
+> `jsonpath` loop reading only `current` will show you one object while
+> the cluster applies another. Check for `outdated` first. A `jsonpath`
+> that misses
 > prints nothing and errors nothing, which in this chapter means
 > reviewing a remediation by looking at a blank line.
 
@@ -91,11 +97,20 @@ What you are looking for, in this order:
 > against a cluster. Verify before running. Replace this block with the
 > command as run, then update VALIDATION.md.
 >
-> Applying is believed to be a single boolean on the object:
-> `spec.apply: true`. The operator watches it and creates the payload.
-> This is the chapter where a half-remembered command does real damage,
-> so confirm the field name on one low-risk remediation and watch what
-> happens before you batch anything.
+> Applying is a single required boolean, `spec.apply` — confirmed, and
+> it is top-level on the spec, not nested. The operator watches it and
+> creates the payload. This is still the chapter where a
+> half-remembered command does real damage, so watch what happens on
+> one low-risk remediation before you batch anything.
+>
+> ⚠️ **Setting `apply` on one remediation can set it on others.** A
+> single XCCDF fix that produces several Kubernetes objects becomes
+> several remediation CRs, named identically except for a trailing
+> `-1`, `-2` and so on. The controller treats that family as a unit:
+> set `apply` on any one of them and it flips `apply` on all its
+> siblings. You cannot apply half a fix, and a count of "remediations I
+> applied" taken from your own commands will understate what actually
+> changed. Count the objects afterwards, not the patches you issued.
 
 ```sh
 # ===== RUN ON: THE CLUSTER =====
@@ -207,12 +222,26 @@ oc get nodes
 > against a cluster. Verify before running. Replace this block with the
 > command as run, then update VALIDATION.md.
 >
-> The mechanism for "apply a set, take one rollout" is believed to be
-> pausing the `MachineConfigPool` first, so the Machine Config Operator
-> accumulates the changes instead of acting on each. Uncertain: whether
-> the Compliance Operator pauses the pool itself when several
-> remediations land together, which would make this redundant rather
-> than wrong. Check `spec.paused` after your first batch.
+> **There are two batching mechanisms and you only get one of them.**
+> That question is now settled, and the answer decides whether the
+> commands below are necessary or redundant.
+>
+> Under **auto-apply**, the operator does it for you: once the suite
+> reaches `Done` it pauses every affected pool, sets `apply` across the
+> suite's remediations, waits for them all, and unpauses once. That is
+> a real "apply a set, take one rollout" guarantee.
+>
+> Under **manual apply** — which is what this chapter recommends and
+> what the commands below do — **the operator pauses nothing.** The
+> suite controller returns immediately because auto-apply is off. Each
+> remediation just creates its `75-` MachineConfig as it reconciles,
+> and any batching you get is the Machine Config Operator happening to
+> coalesce changes that arrived close enough together. That is
+> timing-dependent, not a guarantee.
+>
+> So pausing the pool yourself is **not** redundant on the manual path.
+> It is the only thing that makes the rollout count predictable. What
+> remains drafted is the command sequence, not the reasoning.
 
 ```sh
 # ===== RUN ON: THE CLUSTER =====
@@ -234,11 +263,31 @@ oc get machineconfigpool -w
 > finding that surfaces long after anyone remembers pausing it. Unpause
 > one pool at a time and let it finish before the next.
 
-The applied node remediations are believed to be rendered into a single
-`MachineConfig` per scan, named on the pattern
-`75-<scan-name>-<suite-name>`. If that object exists and the pool has
-rolled, the change is on the nodes; if the pool reports `UPDATED=True`
-but the object is absent, nothing was applied and the scan will say so.
+Each applied node remediation becomes **its own `MachineConfig`**,
+named `75-<scan-name>-<rule-name>`, with a `-1`, `-2` suffix for the
+second and subsequent objects of a multi-object fix. Twenty applied
+node remediations means twenty `75-` objects.
+
+> ⚠️ **Red Hat's documentation says otherwise, and it is wrong.** The
+> Compliance Operator chapter states that remediations are rendered
+> into a MachineConfig named `75-$scan-name-$suite-name` — a single
+> object, with the suite name in it. The suite name appears nowhere in
+> the real name, and there is no aggregation step in the operator at
+> all. The same documentation page contradicts itself a few paragraphs
+> later by listing four separate `75-<scan>-<rule>` objects from one
+> re-scan.
+>
+> This matters because a reviewer checking your work against
+> docs.redhat.com will think the corrected text is the error. The
+> operator's `GetMcName()` is the authority.
+>
+> The thing that *is* rendered into one object per pool is the Machine
+> Config Operator's `rendered-<pool>-<hash>`, which is a different
+> mechanism, a different name, and the reason batching works at all.
+
+If the `75-` objects exist and the pool has rolled, the change is on
+the nodes; if the pool reports `UPDATED=True` but no `75-` object was
+created, nothing was applied and the scan will say so.
 
 ### Measuring the cost
 
@@ -295,14 +344,19 @@ before anybody has read what it is about to change.
 > against a cluster. Verify before running. Replace this block with the
 > command as run, then update VALIDATION.md.
 >
-> The auto-applying setting is believed to be named `default-auto-apply`,
-> identical to `default` except that `autoApplyRemediations` and
-> `autoUpdateRemediations` are both `true`. **Getting the two names the
-> wrong way round is the specific accident this repository exists to
-> prevent**, so do not take the name from this page. Read the booleans
-> off the cluster, as
-> [chapter 9](09-compliance-operator.md#three-profiles-not-two) does, and
-> decide from those.
+> The auto-applying setting is `default-auto-apply`, identical to
+> `default` except that `autoApplyRemediations` and
+> `autoUpdateRemediations` are both `true` — confirmed. What is drafted
+> is the loop below, not the names.
+>
+> **Getting the two the wrong way round is the specific accident this
+> repository exists to prevent**, and reading it off the cluster is
+> still the right habit — but read it knowing what
+> [chapter 9](09-compliance-operator.md#three-profiles-not-two)
+> establishes: on `default` those booleans are **absent, not `false`**,
+> and neither key appears in the output. Absence is the pass. Nobody
+> reconciles these objects either, so `default` on this cluster is
+> whatever the last person left it as.
 
 ```sh
 # ===== RUN ON: THE CLUSTER =====
@@ -348,12 +402,13 @@ expected rather than a sign the remediation did not work.
 > against a cluster. Verify before running. Replace this block with the
 > command as run, then update VALIDATION.md.
 >
-> The operator is believed to surface this explicitly, through two
-> `applicationState` values rather than silence. **Which** remediations
-> in `ocp4-stig` and `rhcos4-stig` land in those states is unknown and
-> is revision-specific — enumerate it from your own first pass rather
-> than from a list. Until confirmed, treat a persistent failure after a
-> successful apply as "investigate" rather than "broken".
+> The operator does surface this explicitly, through the
+> `applicationState` values below rather than through silence —
+> confirmed. **Which** remediations in the three STIG profiles land in
+> those states is unknown and is revision-specific; enumerate it from
+> your own first pass rather than from a list. Treat a persistent
+> failure after a successful apply as "investigate" rather than
+> "broken".
 
 ```sh
 # ===== RUN ON: THE CLUSTER =====
@@ -362,19 +417,88 @@ oc get complianceremediation -n openshift-compliance \
   | grep -E 'MissingDependencies|NeedsReview|Error|Outdated'
 ```
 
-| State | Believed to mean | What you do |
+| State | Means | What you do |
 |---|---|---|
-| `MissingDependencies` | another check must pass first | apply the prerequisite, re-scan, then apply this one |
-| `NeedsReview` | the remediation needs a tailoring variable you have not set | set the variable in a `TailoredProfile`; **the pool stays paused until you do** |
-| `Outdated` | the content changed and the payload with it | read `spec.outdated` against `spec.current` before applying |
+| `MissingDependencies` | a rule it depends on has not passed, or an object it depends on does not exist | apply the prerequisite, re-scan, then apply this one |
+| `NeedsReview` | the remediation needs a tailoring variable you have not set — **only ever this**, never dependencies | set the variable in a `TailoredProfile` |
+| `Outdated` | the content changed and the payload with it | read `spec.outdated` against `spec.current` before applying — and note the operator applies **`outdated`** if it is present |
 | `Error` | the operator could not create the payload | read the object's conditions; this is not a dependency problem |
 
-`NeedsReview` is the one with a nasty second-order effect: while any
-remediation is in that state the machine config pool is held paused, by
-design, so the fix is not disruptive. That is correct behaviour and it
-looks exactly like [the stuck-paused-pool failure](#batching-pause-the-pool)
-above. Check `spec.paused` and `applicationState` together before
-concluding anything about a pool that will not roll.
+### Dependencies are evaluated once, and then never again
+
+`MissingDependencies` comes from one of two annotations the content
+puts on a remediation: a list of XCCDF rules that must evaluate `PASS`,
+or a list of Kubernetes objects that must exist. While either is unmet
+the operator labels the remediation
+`compliance.openshift.io/has-unmet-dependencies` and re-checks every
+twenty seconds.
+
+**What is missing is reported in events, not in status.** The
+remediation tells you *that* a dependency is unmet; a
+`RemediationDependencyCannotBeMet` event on the object names *which*.
+Events age out, so read them while they exist:
+
+```sh
+# ===== RUN ON: THE CLUSTER =====
+oc get events -n openshift-compliance \
+  --field-selector reason=RemediationDependencyCannotBeMet \
+  --sort-by=.lastTimestamp
+```
+
+> ⚠️ **Once satisfied, a dependency is never re-checked.** When the
+> last one is met the operator writes a
+> `compliance.openshift.io/dependencies-met` annotation — and nothing
+> in the operator ever removes it. If the rule that dependency rested
+> on later regresses to `FAIL`, this remediation goes on believing its
+> prerequisite holds, and will apply against a cluster where it does
+> not.
+>
+> The practical consequence is for re-runs, which is to say
+> [chapter 13](13-day2.md): a cluster that has drifted does not
+> re-raise dependency failures it cleared months ago. The scan will
+> still fail the underlying rule, so the information is not lost — but
+> it arrives as an unexplained `FAIL` rather than as a dependency
+> problem, and nothing connects the two.
+>
+> The `has-unmet-dependencies` label is a derived marker, not the
+> source of truth. Deleting it by hand changes nothing.
+
+### What actually holds a pool paused
+
+Earlier drafts of this chapter said that a remediation in `NeedsReview`
+holds the MachineConfigPool paused by design. **That is wrong, and so
+is Red Hat's documentation, which says the same thing.**
+
+The operator explicitly *skips* `NeedsReview` remediations when
+deciding whether to unpause — it emits a `CannotRemediate` warning
+event and moves on. The pool unpauses. This was a deliberate bug fix
+upstream, in a commit titled "fix needs-review unpause pool"; the stuck
+pool was the bug, and the documentation still describes it as the
+feature.
+
+The half of Red Hat's sentence that *is* true: a `NeedsReview`
+remediation is not applied until you set the variable. It just does not
+hold anything else up while you do.
+
+What does hold a pool paused, on the auto-apply path, is any
+remediation that is `Pending`, `NotApplied` or `Error` with `apply`
+set. Note what is missing from that list: `MissingDependencies` also
+does not block, because the operator counts a blocked-but-requested
+remediation as applied — the same quirk that makes it overcount
+elsewhere.
+
+> ⚠️ **An auto-apply suite will unpause a pool you paused by hand.**
+> The operator tracks every pool its remediations touch, and on
+> reaching `Done` it unpauses all of them — it does not check whether
+> it was the one that paused them. If you pause a pool to defer a
+> rollout and an auto-apply binding exists on the same cluster, your
+> pause will be lifted and the rollout will happen. This is the
+> strongest practical argument for not having an auto-apply binding
+> present at all while you are doing manual work.
+
+Check `spec.paused` and `applicationState` together before concluding
+anything about a pool that will not roll — but expect the cause to be
+`Pending` or `Error`, not `NeedsReview`.
 
 > **Do not count "applied" by asking the operator.** Its own
 > `IsApplied()` helper returns true for three different situations: the

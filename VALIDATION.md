@@ -12,7 +12,7 @@ readers need:
 The chapter structure, the ordering, the decisions and the failure modes
 are real and reasoned. The procedures are now drafted — written from
 documentation, never run — and every one of them carries a marker saying
-so. **94 drafted blocks, zero validated.**
+so. **95 drafted blocks, zero validated.**
 
 That ratio is the state of this repository, and it is the number to
 watch. It goes down one procedure at a time, and only by someone
@@ -224,15 +224,15 @@ to stand in front of a cluster and prove.
 | [06 Day-1 config](docs/06-day1-cluster-config.md) | 3 | **Mostly real** — it is prep's post-install step, restated. OSUS and the full pull-path proof are drafted; the OSUS draft is the weakest in the repository. |
 | [07 Identity](docs/07-identity.md) | 9 | **Structure real, commands drafted.** The ordering, the gate before deleting `kubeadmin` and the five rules are the substance and are unchanged. Every resource and the deletion command are drafted. |
 | [08 Encryption at rest](docs/08-encryption-at-rest.md) | 4 | **Drafted.** The distinction from disk encryption and the configured-versus-migrated trap are real. The FIPS cipher choice is deliberately left unasserted. |
-| [09 Compliance Operator](docs/09-compliance-operator.md) | 8 | **Partly real.** The baseline-first argument and capture commands are real. The result taxonomy and the three-profile set are now read from the operator and the content — see below — but the label *keys* and the `ScanSettingBinding` shape are still drafted. |
-| [10 Remediation](docs/10-remediation.md) | 7 | **Partly real.** Reboot economics, review discipline and delta capture are real. The absence of a declined state and the seven `applicationState` values are now confirmed from the operator. Review and apply are drafted. Reboot timings are a drafted *method*, not figures. |
-| [11 Manual controls](docs/11-manual-controls.md) | 9 | **Mostly real as a process.** Banner (three distinct things), audit forwarding and RBAC review are drafted. |
+| [09 Compliance Operator](docs/09-compliance-operator.md) | 8 | **Partly real, and substantially corrected 2026-10-13.** The baseline-first argument is real. Taxonomy, label keys, profile set, revision location and the storage dependency are now read from the operator; the commands that use them are still drafted. |
+| [10 Remediation](docs/10-remediation.md) | 7 | **Partly real, and corrected against the operator 2026-10-13** — two things Red Hat's docs state are wrong, see below. Reboot economics, review discipline and delta capture are real. Review and apply are drafted. Reboot timings are a drafted *method*, not figures. |
+| [11 Manual controls](docs/11-manual-controls.md) | 9 | **Rewritten 2026-10-13 against the benchmark's control file.** The chapter now knows its own scope — 83 controls, 5 manual, ~10 needing a human. Node SSH was the wrong question entirely; the banner is four surfaces and the scan reads none of the text. Still drafted. |
 | [12 Evidence pack](docs/12-evidence-pack.md) | 0 | **Real.** Structure, not procedure — nothing here needs hardware. Its one `TODO` is a question for a human, not a hardware gap, and stays a `TODO`. |
 | [13 Day-2](docs/13-day2.md) | 9 | **Partly real.** The handback to prep and the drift table are real. Upgrade, scheduled scans and File Integrity are drafted. |
 | [topologies/sno](docs/topologies/sno.md) | 9 | **Outage semantics real, configuration drafted.** |
 | [topologies/compact](docs/topologies/compact.md) | 8 | **Outage semantics real, configuration drafted.** Rollout timings are a drafted method, not figures. |
 | [troubleshooting](docs/troubleshooting.md) | 7 | **Partly real.** Failures inherited from prep are written and validated; cluster-side diagnostics are drafted. |
-| [appendix STIG](docs/appendix-stig-cluster.md) | 2 | **Conceptual.** Not procedure. The rule-ID policy and the FIPS/benchmark interaction are reasoned, not measured. |
+| [appendix STIG](docs/appendix-stig-cluster.md) | 3 | **Conceptual.** Not procedure. The rule-ID policy and the FIPS/benchmark interaction are reasoned, not measured. |
 
 ### Known problems in the drafted text
 
@@ -251,6 +251,224 @@ Closed by reading documentation and installer source. **None of this is
 validated** — the chapters affected still carry `DRAFT` markers, and the
 count above does not move. What changed is that the drafts are now
 derived from the right source rather than from the wrong installer.
+
+> One rule, learned the hard way while doing this: **source research
+> does not retire a draft marker.** A block whose field paths are now
+> confirmed is still a block nobody has run. Twice during this work a
+> marker was dropped along with the paragraph it sat in, and both times
+> `scripts/check-docs.py` caught it before it was committed. That is
+> what the check is for.
+
+#### Wave 2 — the Compliance Operator, 2026-10-13
+
+Read from `ComplianceAsCode/compliance-operator` (`master`, cross-checked
+against release tags through v1.8.2) and `ComplianceAsCode/content`.
+Chapters 9 and 10 were drafted almost entirely from Red Hat's published
+documentation; **two of the things that documentation says are wrong**,
+and several more are true but incomplete in ways that produce a clean
+scan over a real gap.
+
+**Where Red Hat's documentation is wrong:**
+
+- **The rendered MachineConfig name.** The docs say applied
+  remediations are rendered into one MachineConfig named
+  `75-$scan-name-$suite-name`. The real name is
+  `75-<scan-name>-<rule-name>`, the suite name appears nowhere, and
+  **there is no aggregation at all** — it is one MachineConfig per
+  applied remediation. The same documentation page contradicts itself
+  a few paragraphs later by listing four `75-<scan>-<rule>` objects
+  from a single re-scan. Source: `GetMcName()` in
+  `complianceremediation_types.go`.
+- **`NeedsReview` and the paused pool.** The docs say a remediation in
+  `NeedsReview` keeps the MachineConfigPool paused. The operator
+  explicitly *skips* those remediations when deciding to unpause —
+  there is an upstream commit titled "fix needs-review unpause pool"
+  that added exactly that skip. The stuck pool was a bug; the docs
+  still describe it as the design. Source:
+  `compliancesuite_controller.go`, the unpause loop.
+
+Both are cited inline in [chapter 10](docs/10-remediation.md) with the
+source, because a reviewer checking against docs.redhat.com will
+otherwise think the corrected text is the error.
+
+**New "reads as a clean scan" traps, which is the class this repository
+exists to collect:**
+
+- **`NOT-APPLICABLE` results are not created at all by default.**
+  `showNotApplicable` defaults to `false` and the aggregator skips
+  object creation entirely for N/A checks. The label value is verbatim
+  `NOT-APPLICABLE` — the hyphen worry from wave 1 was unfounded — but a
+  correctly written selector still returns zero, and a pack reporting
+  `NOT-APPLICABLE: 0` on a STIG scan is making a claim the cluster
+  never made.
+- **A `ScanSettingBinding` written with a `spec:` wrapper may not
+  fail.** The CRD is structural and prunes the unknown fields; whether
+  you see an error depends on your client's validation mode. If it is
+  accepted, `settingsRef` defaults to `default`, a suite is created
+  with **zero scans**, and the binding reports **`READY`**. Not the
+  "unclear error" the chapter previously warned about — a silent no-op
+  that looks successful.
+- **A `roles` entry matching zero nodes completes cleanly.** It emits
+  a warning event, reports `NOT-APPLICABLE`, and goes to `DONE` — the
+  chapter guessed it would look stuck. Worse, the suite rolls up to
+  the *lowest* result and `NOT-APPLICABLE` sits below `COMPLIANT`, so
+  one empty role scan drags a fully compliant suite down to
+  `NOT-APPLICABLE`.
+- **`compliance.openshift.io/image-digest` is not a digest.** Despite
+  the name and its own source comment, it is a random nonce used to
+  garbage-collect stale parsed objects, and it changes on every
+  reparse of a byte-identical image. It looks exactly like the content
+  provenance an evidence pack wants. Citing it is a claim an assessor
+  disproves in one command.
+
+**Settled, where the chapter was hedging:**
+
+- The remediation payload is `spec.current.object`; `spec.object.current`
+  does not exist. **But `spec.outdated.object` is applied in preference
+  when present**, which the chapter had not anticipated.
+- `spec.apply` is a plain required boolean. Setting it on one
+  remediation **also sets it on every sibling** whose name differs only
+  by a trailing `-1`, `-2` — one multi-object fix applies as a unit, so
+  a count of patches issued understates what changed.
+- Creating a binding starts the scan immediately; the cron rerunner is
+  not created until the first results exist.
+- The benchmark revision is **`Profile.version`**, and nowhere else —
+  not on the `ProfileBundle`, the scan, or a check result. A
+  `TailoredProfile` has no version field at all.
+- The operator version is **only** on the CSV. It is logged once at
+  startup and stamped on nothing.
+- `status` and `severity` really are top-level fields on a
+  `ComplianceCheckResult` — the chapter's `custom-columns` expression
+  is right, and "correcting" it to `.status.status` is the bug. Noted
+  in the chapter so nobody fixes it later.
+- All four label keys were correct.
+- The empty-string check status is unreachable on a cluster; the parser
+  returns before creating an object. Remove it from any arithmetic.
+- Batching is **two different mechanisms**: a real operator-level
+  pause/apply/unpause under auto-apply, and nothing at all under manual
+  apply, where any coalescing is the MCO's and is timing-dependent.
+- **An auto-apply suite unpauses pools it did not pause**, including
+  one an administrator paused deliberately.
+- Dependency satisfaction is **write-once**: the operator sets a
+  `dependencies-met` annotation and nothing ever removes it, so a
+  dependency that later regresses is never re-evaluated.
+- Scan storage: `rawResultStorage.enabled` defaults true, the operator
+  creates a PVC and **does not wait for it to bind**, so on a cluster
+  with no default StorageClass the scan sits in `LAUNCHING` for roughly
+  **90 minutes** before timing out with a message that does not mention
+  storage. Directly relevant here, because the storage operator is
+  itself mirrored content.
+- `rotation` (default 3) ages out **raw ARF directories only**.
+  `ComplianceCheckResult` objects are overwritten in place — there is
+  only ever one generation, which is why chapter 9 copies them off the
+  cluster.
+- `suspend: true` works, but **binding against an already-suspended
+  setting creates no suite and no scans**. The chapter's advice to
+  suspend in order to protect a baseline only works after the baseline
+  has run.
+
+#### Wave 2, chapter 11 — the manual controls, 2026-10-13
+
+Read from `ComplianceAsCode/content` `controls/stig_ocp4.yml` at V2R6
+and OpenShift 4.21 documentation. Chapter 11 had been written without
+knowing how large it was.
+
+**The benchmark is 83 controls: 75 automated, 5 manual, 2 not
+applicable, 1 partial.** But the chapter's real scope is nine or ten,
+because two controls marked `automated` cannot be settled by a scan —
+see below. There are no `planned`, `documentation` or `inherently met`
+statuses in this file; those exist in the schema and are not used here.
+
+**Where the chapter was wrong:**
+
+- **Node SSH.** The chapter had a `MachineConfig` writing `/etc/issue`
+  and costing a rolling reboot. **CNTR-OS-001010 (high) requires sshd
+  to be *disabled* on RHCOS**, and there is no `/etc/issue`, no
+  `issue.net` and no sshd-banner rule anywhere in the benchmark — the
+  RHEL STIG's banner rules do not carry over to `rhcos4-stig`, which
+  is the natural assumption and is wrong. The whole section was
+  hardening an interface that should not be listening. It now covers
+  disabling sshd, and notes the consequence for every `RUN ON: A NODE`
+  block in this repository: `oc debug node/` is the access path.
+- **The CLI banner.** The chapter said there was no documented way to
+  put a banner in front of `oc login`. There is: a `motd` ConfigMap in
+  namespace `openshift`, key `data.message`, which is what
+  `openshift_motd_exists` checks. Two caveats it gained: it prints
+  **after** authentication, so do not claim consent-before-access for
+  that path; and **a permissions failure is silently swallowed**, so a
+  correctly configured banner can be invisible to every ordinary user
+  while the rule passes.
+- **Three surfaces, not four.** CNTR-OS-000130 lists four rules. The
+  missed one is the IdP provider-selection page, shown when more than
+  one identity provider is configured.
+
+**New "reads as a clean scan" traps:**
+
+- **All four banner rules are existence checks.** `classification_banner`
+  matches `.spec.text` against `".*"`, which an empty string satisfies.
+  A cluster with four blank banners passes the banner control.
+- **CNTR-OS-000090 (RBAC, high) is marked `automated` and is not.** Its
+  rule ships no OVAL, no CEL, no template; the check is prose and the
+  failure clause is the literal string "RBAC needs review". It produces
+  a verdict that means the scanner looked at nothing.
+- **Adding `audit` to a `ClusterLogForwarder`'s `inputRefs` without
+  first binding `collect-audit-logs` deletes the entire collector
+  DaemonSet.** Not a rejected manifest — all log collection stops,
+  including the application and infrastructure logs that were working.
+
+**Version facts that are mirror-gate items:**
+
+- OCP 4.21 supports Logging **6.6 or 6.5**; 6.4 reached end of
+  maintenance in July 2026 and 5.x will not work. `logging.openshift.io/v1`
+  was removed in 6.0 — the API group is now
+  `observability.openshift.io/v1`, Vector is the only collector, and
+  there is no automated 5.x → 6.x upgrade. `cluster-logging` is added
+  to [chapter 1's mirror gate](docs/01-intake.md#the-mirror-gate);
+  `loki-operator` is **not** required when forwarding off-cluster,
+  which is worth not mirroring.
+- **The STIG's own fix text for audit forwarding is broken on 4.21.**
+  V2R6 ships a remediation using the removed `logging.openshift.io/v1`
+  group. The *rule* checks both groups; the fix an assessor reads has
+  not caught up.
+
+**Precision gained:**
+
+- The audit profile the benchmark wants is settled, not a judgement
+  call: `ocp4-stig` sets `var_openshift_audit_profile=WriteRequestBodies`.
+  **But even under that profile, `Secret`, `Route` and `OAuthClient`
+  are logged at metadata level only** — so "all write request bodies
+  are captured" is an overstatement, and an easily checked one.
+- CNTR-OS-000430 (MFA) and **CNTR-OS-000460 (high)** are both marked
+  *not applicable* in the content, with a justification pushing them
+  onto the identity provider — and CNTR-OS-000460 carries **27 SRG
+  requirements**. The MFA attestation is therefore the
+  highest-leverage paragraph in chapter 11: one conversation with the
+  IdP owner discharges two controls and twenty-seven mappings.
+- `oc adm policy who-can` and `oc describe clusterrolebinding.rbac` are
+  documented by Red Hat and citable. **`oc auth can-i --list --as=` is
+  not** — it is inherited kubectl behaviour and appears nowhere in the
+  OpenShift authentication documentation. Use it to investigate; cite
+  the documented ones.
+
+**Still open, and stated rather than glossed:** the content's control
+file is titled for **OpenShift 4.12** and pinned to V2R6, while this
+repository targets 4.21. Whether DISA has published a later revision,
+or one specific to 4.21, was not established. Also unresolved: whether
+4.21 ships a default RoleBinding letting ordinary users read the `motd`
+ConfigMap — which decides whether the CLI banner works at all, and is
+a one-command check on a real cluster.
+
+**A negative finding that strengthens the rule-ID policy:** mapping a
+check result back to a `CNTR-OS-*` control **is not possible on any
+released operator**. The annotation that would carry it is unreleased;
+the older annotation that exists is silently absent because the
+content's reference URL moved from `public.cyber.mil` to
+`www.cyber.mil` in September 2025 and the operator's regex was never
+updated. And the mapping is many-to-many regardless. So the content's
+own control file, at the revision matching `Profile.version`, is the
+system of record — which is exactly where this repository's nine rule
+IDs came from. See
+[the appendix](docs/appendix-stig-cluster.md#the-cluster-will-probably-not-tell-you-the-control-id).
 
 - **Chapter 3's window did not exist, and the chapter was rebuilt**
   (2026-10-13). There is no `create manifests` / `create

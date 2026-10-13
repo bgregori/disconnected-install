@@ -57,6 +57,44 @@ that the `CatalogSource` from
 is `READY`, and that `disableAllDefaultSources` did not take your
 mirrored source with it.
 
+### You also need storage, and nothing tells you so
+
+`rawResultStorage.enabled` defaults to **true**, so every scan creates
+a `PersistentVolumeClaim` for its raw results before it runs. **The
+operator does not wait for that claim to bind.** It goes straight on to
+create the result-server pod, which sits `Pending` forever if nothing
+can satisfy the claim.
+
+What you see is a scan stuck in `LAUNCHING` or `RUNNING`. What is
+actually wrong is that there is no default `StorageClass`. The scan
+eventually times out — default `30m`, retried up to three times, so
+roughly **an hour and a half before anything says "failed"**, and the
+message when it comes does not mention storage.
+
+This is a disconnected-cluster problem specifically, because the
+storage operator is itself mirrored content and chapter 9 can easily
+run before anybody has installed it. Check before binding anything:
+
+```sh
+# ===== RUN ON: THE CLUSTER =====
+oc get storageclass
+oc get storageclass -o jsonpath='{range .items[?(@.metadata.annotations.storageclass\.kubernetes\.io/is-default-class=="true")]}{.metadata.name}{"\n"}{end}'
+```
+
+The second command printing nothing means there is no default class and
+every scan you start will hang. Either install the topology's storage
+operator — [LVM Storage](topologies/sno.md) or
+[ODF](topologies/compact.md), both of which are
+[mirror-gate items](01-intake.md#the-mirror-gate) — or set
+`storageClassName` explicitly on the ScanSetting.
+
+> **You can turn it off, and mostly you should not.** Setting
+> `rawResultStorage.enabled: false` skips the PVC and the result server
+> entirely and the scan runs fine. What you lose is the raw ARF — the
+> machine-readable report some ISSOs ask for by name, discussed under
+> [two kinds of result](12-evidence-pack.md#two-kinds-of-result-and-only-one-of-them-is-durable).
+> Decide that deliberately, not by discovering it after the fact.
+
 ---
 
 ## Installing
@@ -208,49 +246,77 @@ implements — and they move on different schedules. Two consequences:
 
 ```sh
 # ===== RUN ON: THE CLUSTER =====
-oc get csv -n <compliance-namespace> -o custom-columns=NAME:.metadata.name,VERSION:.spec.version
-oc get profile.compliance -A -o yaml | grep -iE 'name:|version'
-```
+# the operator version -- from the CSV, which is the only place it exists
+oc get csv -n openshift-compliance \
+  -o custom-columns=NAME:.metadata.name,VERSION:.spec.version
 
-> 🚧 **DRAFT -- NOT VALIDATED.** Written from documentation, not executed
-> against a cluster. Verify before running. Replace this block with the
-> command as run, then update VALIDATION.md.
->
-> The operator version is on the CSV and is easy; the `grep` above is a
-> way of staring at the content, not a procedure. The **benchmark
-> revision** — the number an assessor cares about — is believed to be
-> carried three ways, none of them a field called "revision", and which
-> of the three to quote has not been confirmed. Check all three and
-> record all three; they are cheap and an assessor will accept a digest
-> where they will not accept a guess.
+# the benchmark revision -- on the Profile, as a top-level .version
+oc get profile.compliance -n openshift-compliance \
+  -o custom-columns=NAME:.metadata.name,VERSION:.version | grep -i stig
 
-```sh
-# ===== RUN ON: THE CLUSTER =====
-# 1. the content image, by digest -- the authoritative identity
+# the content image that supplied both
 oc get profilebundle -n openshift-compliance \
   -o custom-columns=NAME:.metadata.name,IMAGE:.spec.contentImage,STATUS:.status.dataStreamStatus
-
-# 2. the revision-pinned profile names the content ships alongside the
-#    unversioned aliases
-oc get profile.compliance -n openshift-compliance | grep -i stig
-
-# 3. the digest annotation the operator stamps on every parsed object
-oc get profile.compliance ocp4-stig -n openshift-compliance -o yaml
 ```
 
-The first is the one to trust. Mirrored operator images are
-digest-referenced, not tagged, so `spec.contentImage` should already end
-in `@sha256:...`; if it ends in a tag, something resolved outside the
+> 🚧 **DRAFT -- NOT VALIDATED.** The field paths and the operator
+> behaviour below are read from the operator's source, not from a
+> cluster — **the three commands above have still never been run.**
+> Verify before running, replace this block with the commands as run,
+> then update VALIDATION.md. Knowing where a field lives is not the
+> same as having watched `oc` print it.
+
+Three commands, three different facts, and all three go in the pack.
+
+**The benchmark revision is `Profile.version`** — a top-level field,
+printed as the `VERSION` column of `oc get profiles.compliance`, and it
+reads `V2R6` on current content. An earlier draft said it was "carried
+three ways, none of them a field called revision" and told you to
+record all three. That was wrong: there is exactly one place, and this
+is it. It is also the *only* place — not on the `ProfileBundle`, not on
+the `ComplianceScan`, not on a check result.
+
+> If you scan through a `TailoredProfile` rather than a `Profile`, note
+> that a TailoredProfile has **no version field at all**. Resolve
+> `.spec.extends` back to the `Profile` it is based on and read the
+> version there, or the pack records nothing.
+
+**The operator version is only on the CSV.** The operator does not
+stamp it onto any resource it creates — it logs it once at startup and
+that is all. There is no annotation on a scan or a result that will
+tell you later which operator produced it, so if the CSV is not
+captured at the time, that fact is gone.
+
+> ⚠️ **Do not use `compliance.openshift.io/image-digest` as
+> provenance.** The operator stamps that annotation on every parsed
+> `Profile`, `Rule` and `Variable`, and despite its name — and despite
+> its own source comment — **it is not a digest.** It is a randomly
+> generated nonce the operator uses to garbage-collect objects left
+> over from a previous parse. It changes on every reparse even when the
+> content image is byte-identical, and it is not derived from the image
+> in any way.
+>
+> It looks exactly like the thing an evidence pack wants. Citing it as
+> a content digest is a claim an assessor can disprove in one command,
+> which by this repository's reckoning puts every other claim in the
+> pack in question.
+
+For real content provenance, use `spec.contentImage`. Mirrored operator
+images are digest-referenced, not tagged, so it should already end in
+`@sha256:...`; if it ends in a tag, something resolved outside the
 mirror and the result is not reproducible.
 
-The second is the most readable. The content tends to ship both
-`ocp4-stig` and a revision-pinned name such as `ocp4-stig-v2r1`, where
-the unversioned name is an alias for the newest revision in that content
-image. **If both exist, bind the pinned one.** An alias that silently
-advances when the operator is updated is exactly the "results changed
-and nothing changed in the cluster" problem described above, and pinning
-costs nothing. Confirm which names your content actually ships — the set
-is revision-specific and the deprecated ones get removed.
+**Bind the revision-pinned profile name if the content ships one** —
+`ocp4-stig-v2r6` beside `ocp4-stig`. The unversioned name is an alias
+that advances when the operator is updated, which is exactly the
+"results changed and nothing changed in the cluster" problem above, and
+pinning costs nothing. Confirm which names your content ships; the set
+is revision-specific and deprecated ones get removed.
+
+> Profile object names are prefixed with the **`ProfileBundle` name**,
+> which is why the content's `stig` profile appears as `ocp4-stig`. The
+> bundle name is configurable, so do not assume the `ocp4-` prefix on a
+> cluster you did not build.
 
 📌 **Handoff** The operator version and the benchmark revision go in the
 evidence pack beside every result. A scan result with no version
@@ -321,36 +387,65 @@ pinned name just means the two cannot drift apart.
 > [chapter 1](01-intake.md#the-mirror-gate) assumed two profiles when
 > it was written.
 
-Before writing any binding, read the scan settings the operator shipped
-and check which of them applies remediations. This is the step that
-protects the baseline:
+Before writing any binding, read the scan settings and check which of
+them applies remediations. This is the step that protects the baseline:
 
 ```sh
 # ===== RUN ON: THE CLUSTER =====
 oc get scansetting -n openshift-compliance
 oc get scansetting default -n openshift-compliance -o yaml
+oc get scansetting default-auto-apply -n openshift-compliance -o yaml
 ```
 
-Two are expected: `default` and `default-auto-apply`, differing only in
-`autoApplyRemediations` and `autoUpdateRemediations`. **Read the
-booleans, not the names.** A name is a convention; the boolean is the
-thing that reboots your cluster. If `default` comes back with
-`autoApplyRemediations: true` on your content, stop and work out why
-before binding anything to it.
+Two are expected on self-managed OpenShift: `default` and
+`default-auto-apply`, differing in `autoApplyRemediations` and
+`autoUpdateRemediations` and in nothing else. Both carry the same
+schedule, `0 1 * * *` — daily at 01:00 — which matters more than it
+looks and is dealt with below.
+
+> ⚠️ **On `default`, those booleans are not `false`. They are absent.**
+> The operator creates both settings in code at startup rather than
+> from a manifest, and the two fields are `omitempty`, so on `default`
+> they are omitted from the stored object entirely. `oc get scansetting
+> default -o yaml` shows **neither key**.
+>
+> So "read the booleans, not the names" — which earlier drafts of this
+> chapter said, and which is the right instinct — does not work as
+> written here. There is no boolean on `default` to read. Absence is
+> the answer, and it means `false`. What you are confirming is that
+> `autoApplyRemediations` is *either* absent *or* explicitly `false`,
+> and that on `default-auto-apply` it is explicitly `true`. A grep that
+> returns nothing is the pass on one and the alarm on the other.
+
+Two further properties of these objects are worth knowing before you
+rely on them:
+
+- **They are created once and never reconciled.** The operator creates
+  them at startup and tolerates "already exists". If somebody edits
+  `default`, the edit persists — across operator restarts and
+  upgrades — and nothing restores it. `default` is not a known-good
+  object you can assume the shape of; it is whatever the last person
+  left. Read it on *this* cluster, every time.
+- **`default-auto-apply` does not exist on every platform.** It is
+  created only where auto-remediation is enabled by platform —
+  self-managed OpenShift, Power, Z and HyperShift. On ROSA, EKS and
+  the generic platform only `default` exists. Its absence is not
+  evidence that somebody removed it.
 
 > 🚧 **DRAFT -- NOT VALIDATED.** Written from documentation, not executed
 > against a cluster. Verify before running. Replace this block with the
 > command as run, then update VALIDATION.md.
 >
-> Two things to check before applying this. **(a)**
-> `settingsRef.name` — `default` is believed to be the scan-only one,
-> and getting this backwards on a first run rolls every node before
-> anyone has read a remediation. **(b)** `roles`, discussed below.
+> `settingsRef.name` is the field to get right: `default` is the
+> scan-only setting and `default-auto-apply` reboots nodes, and getting
+> this backwards on a first run rolls every node before anyone has read
+> a remediation. The names and their semantics are confirmed above;
+> what is not confirmed is this file working as written against your
+> operator version.
 >
-> The profile list below is no longer in question — see *Three
-> profiles, not two* — but confirm the names exist on your content with
-> `oc get profile.compliance -n openshift-compliance` before binding,
-> because the revision-pinned names differ between content versions.
+> Confirm the profile names exist on your content with
+> `oc get profile.compliance -n openshift-compliance` before binding —
+> the revision-pinned names differ between content versions.
 
 ```yaml
 # ===== EDIT IN: ${OCP_INSTALL_ROOT}/day2/compliance/stig-baseline.yaml =====
@@ -375,26 +470,67 @@ settingsRef:
   name: default
 ```
 
-Note the shape: `profiles` and `settingsRef` are **top-level**, not under
-a `spec`. A binding written with a `spec:` wrapper is rejected, and the
-error does not say so clearly.
+Note the shape: `profiles` and `settingsRef` are **top-level siblings
+of `metadata`**, not under a `spec`. The type does have a `spec` field,
+but it is an empty struct carried for a tooling reason, with no
+properties in the CRD schema.
+
+> ⚠️ **A binding written with a `spec:` wrapper may not fail. That is
+> the problem.** The CRD schema is structural and does not preserve
+> unknown fields, so the API server **prunes** `spec.profiles` and
+> `spec.settingsRef` rather than the operator rejecting them. Whether
+> you see anything depends on your client's field validation: a modern
+> `oc apply` defaults to strict and will say `unknown field
+> "spec.profiles"`, but `--validate=false`, an older client, or a
+> GitOps controller that disables strict decoding will **accept it
+> silently**.
+>
+> What you then have: no profiles, and `settingsRef` absent — so the
+> CRD's own default fills it in as `default`. The controller builds a
+> `ComplianceSuite` containing **zero scans**, creates it, and marks
+> the binding **`READY`**.
+>
+> So the failure is not an unclear error. It is a binding that reports
+> ready, a suite that exists, and nothing scanned — which in this
+> repository's terms is the worst available outcome, because an empty
+> result set and a clean result set are the same empty result set.
+> Check `oc get compliancescan -n openshift-compliance` returns rows,
+> not just that the binding says `READY`.
 
 Two properties of the shipped `default` setting matter more here than
 they would on an ordinary cluster:
 
-- **`roles` lists `worker` and `master`.** A node scan is generated per
-  role. On [single node](topologies/sno.md) the one machine carries both
-  labels, and on [three-node compact](topologies/compact.md) there are no
-  workers at all — a role matching zero nodes is the kind of thing that
-  leaves a scan looking stuck rather than failing. Set `roles` to match
-  the pools this cluster actually has.
-- **`default` carries a cron schedule** — a nightly re-scan. That is
-  reasonable steady-state behaviour and a direct threat to the baseline:
-  the scan results on the cluster are **overwritten** by the next run,
-  and `rawResultStorage.rotation` ages the raw results out after a few.
-  This is why the capture step below writes to a dated directory and why
-  you copy it off the cluster. Consider setting `suspend: true` on a
-  copy of the setting until the baseline is captured and archived.
+- **`roles` defaults to `master` and `worker`** on self-managed
+  OpenShift. A node scan is generated per role. On
+  [single node](topologies/sno.md) the one machine carries both labels;
+  on [three-node compact](topologies/compact.md) there are no workers
+  at all.
+
+  A role matching zero nodes **does not hang and does not fail** — an
+  earlier draft of this chapter guessed it would look stuck, and that
+  is wrong. The scan emits a `NoMatchingNodes` warning event, sets its
+  result to `NOT-APPLICABLE`, and goes to `DONE` immediately with zero
+  check results.
+
+  That sounds harmless and is not, because of how the suite rolls up.
+  The suite reports the *lowest* result across its scans, and in that
+  ordering `NOT-APPLICABLE` sits **below** `COMPLIANT`. So one empty
+  role scan drags an otherwise fully compliant suite down to
+  `NOT-APPLICABLE` — a suite-level result that looks like a finding,
+  is not one, and will be asked about. Set `roles` to the pools this
+  cluster actually has and the problem disappears.
+- **The schedule is `0 1 * * *`** — a nightly re-scan, on both settings,
+  and a direct threat to the baseline: the check results on the cluster
+  are **overwritten in place** by the next run. This is why the capture
+  step below writes to a dated directory and why you copy it off the
+  cluster.
+
+  > ⚠️ **If you suspend to protect the baseline, suspend *after* the
+  > first scan, never before.** `suspend: true` works, but a binding
+  > created against an already-suspended setting produces **no suite
+  > and no scans at all** — the controller returns early. You get a
+  > binding in `SUSPENDED` and no baseline. Run the scan, capture it,
+  > then suspend.
 
 ---
 
@@ -404,11 +540,13 @@ they would on an ordinary cluster:
 > against a cluster. Verify before running. Replace this block with the
 > command as run, then update VALIDATION.md.
 >
-> Creating the binding is believed to start the scan immediately — there
-> is no separate "run" verb. **Duration is unmeasured**, and it is the
-> number worth writing down, because the node scan runs a pod per node
-> and the first question anyone asks is whether it has finished or hung.
-> Time it and replace this paragraph with the figure.
+> Creating the binding starts the scan immediately — confirmed; there
+> is no separate "run" verb, and the cron rerunner is not even created
+> until the first results are available. **Duration is what remains
+> unmeasured**, and it is the number worth writing down, because the
+> node scan runs a pod per node and the first question anyone asks is
+> whether it has finished or hung. Time it and replace this paragraph
+> with the figure.
 
 ```sh
 # ===== RUN ON: THE CLUSTER =====
@@ -460,7 +598,9 @@ mkdir -p ${BASELINE}
 oc get compliancecheckresult -A -o yaml  > ${BASELINE}/checkresults.yaml
 oc get complianceremediation -A -o yaml  > ${BASELINE}/remediations.yaml
 oc get compliancescan -A -o yaml         > ${BASELINE}/scans.yaml
-oc get csv -n <compliance-namespace> -o yaml > ${BASELINE}/operator-version.yaml
+oc get csv -n openshift-compliance -o yaml   > ${BASELINE}/operator-version.yaml
+oc get profile.compliance -A -o yaml     > ${BASELINE}/profiles.yaml
+oc get profilebundle -A -o yaml          > ${BASELINE}/profilebundles.yaml
 
 oc get compliancecheckresult -A \
   --no-headers -o custom-columns=NAME:.metadata.name,STATUS:.status,SEVERITY:.severity \
@@ -469,6 +609,21 @@ oc get compliancecheckresult -A \
 wc -l ${BASELINE}/summary.txt
 awk '{print $2}' ${BASELINE}/summary.txt | sort | uniq -c
 ```
+
+> **`STATUS:.status` and `SEVERITY:.severity` are correct. Do not
+> "fix" them to `.status.status`.** `ComplianceCheckResult` is an
+> unusual CRD: it has no `spec` and no `status` subresource, and
+> carries `id`, `status`, `severity` and the rest as **top-level
+> fields** beside `metadata`. Every instinct trained on normal
+> Kubernetes objects says this is a typo. It is not, and correcting it
+> produces a `summary.txt` of empty columns — which, as the acceptance
+> checklist notes, diffs cleanly against another file of empty columns
+> and reads as "nothing changed".
+>
+> `profiles.yaml` is captured alongside because it is the only thing
+> that carries the benchmark revision, and `profilebundles.yaml`
+> because `spec.contentImage` is the only real content provenance.
+> Neither can be reconstructed after the operator is upgraded.
 
 > 🚧 **DRAFT -- NOT VALIDATED.** Written from documentation, not executed
 > against a cluster. Verify before running. Replace this block with the
@@ -518,18 +673,21 @@ survive the cluster being rebuilt.
 
 ## Reading the results
 
-Seven outcomes, and an eighth that is the empty string:
+Seven outcomes — and one of them is usually missing from your cluster
+entirely, which is the trap in this section:
 
 | Status | Means | Who deals with it |
 |---|---|---|
 | `PASS` | the check passed | nobody |
 | `FAIL` | the check failed | [chapter 10](10-remediation.md) |
 | `MANUAL` | the scanner cannot determine this automatically | [chapter 11](11-manual-controls.md) — **these do not go away by scanning harder** |
-| `NOT-APPLICABLE` | the rule did not run because it does not apply, or was not selected | note it; an assessor may ask why |
+| `NOT-APPLICABLE` | the rule did not run because it does not apply | **usually not persisted at all** — see below |
 | `ERROR` | the check could not run | investigate — an `ERROR` is not a `PASS` and is easy to let slide into one |
 | `INFO` | the check found something below the error threshold | read it; it is not a failure and not nothing |
 | `INCONSISTENT` | **the check returned different results on different nodes** | investigate — this is a node that drifted, and it is invisible if you only count PASS and FAIL |
-| *(empty)* | the check yielded no usable result | the one that breaks arithmetic — see below |
+
+Severities are lowercase — `unknown`, `info`, `low`, `medium`, `high`.
+There is no `critical`, and a selector written for one matches nothing.
 
 `MANUAL` is the category that gets lost. It is not a failure, so it does
 not appear on a remediation list, and it is not a pass, so the control is
@@ -546,31 +704,64 @@ oc get compliancecheckresult -A -l compliance.openshift.io/check-status=MANUAL
 oc get compliancecheckresult -A -l compliance.openshift.io/check-status=ERROR
 ```
 
-**The value is `NOT-APPLICABLE`, with the hyphen.** An earlier draft of
-this chapter warned that the label might carry an unhyphenated
-`NOTAPPLICABLE` and that a selector copied from the table above would
-therefore match nothing. That warning was wrong, and so was the
-enumeration loop it guarded: the operator defines the constant as the
-hyphenated string, and the unhyphenated form matches nothing. If you
-ran the previous version of the loop below, its `NOT-APPLICABLE` count
-was zero regardless of the truth.
+### The N/A trap, which is not the one this chapter expected
 
-> 🚧 **DRAFT -- NOT VALIDATED.** The status values are read from the
-> operator's `ComplianceCheckResult` type, not from a cluster. The label
-> **key** `compliance.openshift.io/check-status` is still only believed
-> correct, as are the companions
-> `compliance.openshift.io/check-severity`,
-> `compliance.openshift.io/scan-name` and `compliance.openshift.io/suite`.
-> Confirm the keys from `--show-labels` on a real result. The arithmetic
-> below is what catches it if they are wrong.
+The label value is `NOT-APPLICABLE`, hyphen included, set verbatim from
+the operator's own constant. An earlier draft warned it might be an
+unhyphenated `NOTAPPLICABLE` and that a selector copied from the table
+would match nothing. **That warning was wrong — and the real hazard is
+worse, because it survives getting the selector right.**
+
+> ⚠️ **`NOT-APPLICABLE` results are not created at all by default.**
+> The scan has a `showNotApplicable` field that defaults to `false`,
+> and when it is false the aggregator *skips object creation* for every
+> N/A check. They are not hidden, not filtered at display time —
+> they do not exist as objects.
+>
+> So a correctly written selector returns zero, and zero reads as "this
+> benchmark had nothing inapplicable to say about my cluster", which is
+> almost never true. On a STIG scan a substantial number of rules do
+> not apply, and an evidence pack reporting `NOT-APPLICABLE: 0` is
+> making a claim the cluster never made.
+
+Two honest ways out, and you have to pick one before the baseline:
+
+- **Set `showNotApplicable: true`** on the scan settings and re-scan,
+  so the objects exist and can be counted. More results to store, and
+  the number an assessor sees is real.
+- **Or state the suppression in the pack** — "N/A results are
+  suppressed by operator default and were not enumerated" — rather
+  than printing a zero that implies the opposite.
+
+The one thing not to do is report the zero without the sentence.
+
+There is also no empty-status result to worry about. The enum has one,
+but the parser returns before creating an object, so it is unreachable
+on a cluster. An earlier draft told you to hunt for these; don't.
+
+### Reconciling the counts
+
+> 🚧 **DRAFT -- NOT VALIDATED.** The status values, the four label keys
+> and the N/A suppression above are confirmed from the operator's
+> source. **The loop below has not been run against a cluster**, and
+> the `check-count` reconciliation in particular is reasoning about
+> what two numbers should mean, not an observation that they do.
+> Verify before running, replace with the commands as run, then update
+> VALIDATION.md.
 
 A selector that matches nothing returns an empty list, which looks
-exactly like "there are none". So never read a selector's output alone —
-reconcile it against the total:
+exactly like "there are none". So never read a selector's output alone.
+The operator gives you an independent total to check against — a
+`check-count` annotation it writes on each `ComplianceScan`:
 
 ```sh
 # ===== RUN ON: THE CLUSTER =====
 oc get compliancecheckresult -A --no-headers | wc -l
+
+oc get compliancescan -n openshift-compliance \
+  -o custom-columns=NAME:.metadata.name,\
+CHECKS:.metadata.annotations.compliance\.openshift\.io/check-count
+
 for s in PASS FAIL MANUAL INFO INCONSISTENT ERROR NOT-APPLICABLE; do
   printf '%-16s %s\n' "$s" \
     "$(oc get compliancecheckresult -A --no-headers \
@@ -578,13 +769,15 @@ for s in PASS FAIL MANUAL INFO INCONSISTENT ERROR NOT-APPLICABLE; do
 done
 ```
 
-The per-status counts must sum to the total. If they do not, the
-difference is either a wrong value in that list or the empty-status
-results, which no selector in the loop can match — and either way some
-results are invisible to you. That is the worst outcome available here,
-because the ones that vanish are not the ones that were going to pass.
-Chase the difference to zero before the numbers go anywhere near the
-evidence pack.
+The per-status counts must sum to the object total. If they do not, a
+value in that list is wrong and some results are invisible to you —
+which is the worst outcome available here, because the ones that vanish
+are not the ones that were going to pass.
+
+The scans' `check-count` is the separate question: it is what the
+operator thinks it evaluated, so a gap between that and the object
+count is the N/A suppression above, and you should be able to account
+for it exactly rather than approximately.
 
 ---
 

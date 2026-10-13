@@ -17,14 +17,53 @@ oc get compliancecheckresult -A -l compliance.openshift.io/check-status=MANUAL
 > against a cluster. Verify before running. Replace this block with the
 > command as run, then update VALIDATION.md.
 >
-> The label key `compliance.openshift.io/check-status` is believed
-> correct — see
-> [chapter 9's selector caveats](09-compliance-operator.md#reading-the-results),
-> which apply here unchanged and matter more, because a selector that
-> matches nothing returns an empty list that reads as "no manual
+> The label key is confirmed, but
+> [chapter 9's selector caveats](09-compliance-operator.md#reading-the-results)
+> apply here unchanged and matter more than anywhere else: a selector
+> that matches nothing returns an empty list that reads as "no manual
 > controls". That is the most expensive wrong answer in this chapter.
-> The **full list** of `MANUAL` results the profiles produce is specific
-> to the benchmark revision in use and has not been enumerated.
+> What has **not** been established is how the benchmark's control
+> statuses map onto `MANUAL` check results on a running cluster —
+> which is the thing the command above actually returns.
+
+### How big this chapter is
+
+The benchmark's own control file answers the question the scan does
+not, and the number is smaller and stranger than you would guess.
+At V2R6 there are **83 controls**:
+
+| Status in the benchmark | Count |
+|---|---|
+| `automated` | 75 |
+| `manual` | 5 |
+| `not applicable` | 2 |
+| `partial` | 1 |
+
+The five `manual` ones are the honest ones: images limited to offered
+capabilities, PPSM registration of ports and protocols, separation of
+user and management functionality, Alert Manager receivers for audit
+failures, and privileged access for vulnerability scanning. Three of
+those carry no rules at all.
+
+**But the real scope is nine or ten, not five**, because two controls
+marked `automated` cannot be settled by a scan:
+
+- **CNTR-OS-000090** (RBAC, **high**) — marked automated, but its only
+  rule has no OVAL and no CEL. The entire check is prose ending "if
+  these results show users with privileged access that do not require
+  that access, this is a finding." A human decides. See below.
+- **CNTR-OS-000130** (the banner, low) — automated, but all four rules
+  are existence checks that never read your text. See above.
+
+And the two `not applicable` controls are not free either — they are
+free *only if somebody writes down why*, which is the MFA attestation
+at the end of this chapter.
+
+> 🚧 **DRAFT -- NOT VALIDATED.** These counts are read from the
+> benchmark's control file at V2R6, not from a scan. How many results
+> actually come back labelled `MANUAL` on a cluster is a different
+> number and has not been measured — control status and check-result
+> status are not the same thing. Record both.
 
 Enumerate it from your own scan, write it to a file, and work that file:
 
@@ -87,9 +126,37 @@ be prosecutable. This is a legal control rather than a technical one,
 which is exactly why engineers skip it.
 
 The part that is routinely half-done: **"every interface" means more
-than the web console.** The console, the CLI login, and the node SSH
-path are three separate places, configured three separate ways, and a
-banner on the console alone satisfies nobody.
+than the web console.** One control covers it — **CNTR-OS-000130**,
+level low, nominally automated — and it lists **four** rules, because
+there are four surfaces, not the three an earlier draft of this chapter
+assumed:
+
+| Surface | Mechanism | Rule |
+|---|---|---|
+| Console, before login | OAuth login template | `oauth_login_template_set` |
+| Console, IdP chooser | OAuth provider-selection template | `oauth_provider_selection_set` |
+| Console, after login | `ConsoleNotification` | `classification_banner` |
+| `oc` CLI | `motd` ConfigMap | `openshift_motd_exists` |
+
+The IdP-chooser page is the one nobody thinks of. It appears when more
+than one identity provider is configured, its stated rationale is
+branding rather than consent, and it still has to pass.
+
+> ⚠️ **All four rules are existence checks. None of them reads your
+> text.** `classification_banner` matches `.spec.text` against `".*"` —
+> which an empty string satisfies. `openshift_motd_exists` wants
+> `.data.message` to be non-empty. The two template rules check only
+> that a template name is set.
+>
+> So a cluster with four blank banners **passes the banner control**.
+> The DISA check text is a human reading the words; the scanner is not
+> that human. A green `CNTR-OS-000130` is evidence that four objects
+> exist, and nothing more — which is why the evidence for this control
+> is screenshots, and why this chapter is in the manual-controls
+> chapter at all.
+
+**Node SSH is deliberately absent from that list.** See below; the
+answer there is not what you would expect.
 
 ### 1. Before authentication — the OAuth login template
 
@@ -168,64 +235,95 @@ spec:
   backgroundColor: "#c00"
 ```
 
-### 3. The node SSH banner
+### 3. The node SSH banner — the STIG does not want one
 
-A different thing entirely, configured a different way, and the one
-that costs a reboot.
+An earlier draft of this chapter had a `MachineConfig` here writing
+`/etc/issue` and `/etc/issue.net`, costing a rolling reboot. **That was
+the wrong question.**
 
-> 🚧 **DRAFT -- NOT VALIDATED.** Written from documentation, not executed
-> against a cluster. Verify before running. Replace this block with the
-> command as run, then update VALIDATION.md.
+> ⚠️ **The STIG requires node SSH to be turned off.**
+> **CNTR-OS-001010**, level **high**: *"Red Hat Enterprise Linux CoreOS
+> (RHCOS) must disable SSHD service."* Rule `service_sshd_disabled`,
+> pulled into two further controls. There is no `/etc/issue` rule, no
+> `sshd` banner rule, nothing — the RHEL STIG's banner rules **do not
+> carry over** to `rhcos4-stig`, which is the natural assumption and is
+> wrong.
 >
-> On RHCOS this is a `MachineConfig` writing `/etc/issue` and
-> `/etc/issue.net` and pointing `sshd` at the latter — **and therefore a
-> rolling reboot**, see
-> [chapter 10's reboot economics](10-remediation.md#reboot-economics).
-> Batch it with the remediation rollout rather than taking a reboot of
-> its own. Uncertain: whether the scanner checks `/etc/issue`,
-> `/etc/issue.net`, or the `sshd` `Banner` directive, and whether
-> `sshd_config.d/` drop-ins are honoured at this RHCOS version — the
-> safe answer is to set all of them consistently. Also worth checking
-> whether the `rhcos4-stig` profile already ships a remediation for
-> this, in which case apply that instead of hand-writing one.
+> So there is no node-SSH banner to configure, and writing one is
+> effort spent hardening an interface the benchmark says should not be
+> listening. The control to satisfy is "sshd is disabled", and the
+> evidence is that it is.
+
+This has a consequence worth facing early rather than at remediation
+time: **`oc debug node/` is how you inspect a node from here on.**
+Every `RUN ON: A NODE` block in this repository assumes that, which is
+why none of them is written as an `ssh` command. If your operational
+procedures assume SSH to nodes, that assumption and this control are
+in conflict, and the conversation belongs at intake rather than at
+assessment.
+
+> 🚧 **DRAFT -- NOT VALIDATED.** The control and the rule name are read
+> from the benchmark's control file, not from a cluster. Whether
+> `service_sshd_disabled` ships an automated remediation, and what it
+> does to an in-progress debug session, has not been established.
+> Verify before running, then update VALIDATION.md.
 
 ```sh
 # ===== RUN ON: THE CLUSTER =====
-oc get complianceremediation -n openshift-compliance | grep -iE 'banner|issue|motd'
+oc get compliancecheckresult -A | grep -i sshd
 ```
-
-If a remediation exists, use it: a content-supplied remediation is
-checked by the same content that scans it, and a hand-written one is a
-second thing to keep in step. If none exists, a `MachineConfig` writing
-the file is the fallback, and the file body must be base64-encoded into
-the Ignition source — which is the second place the long approved text
-gets mangled.
-
-Verify from a node, not from the install host:
 
 ```sh
 # ===== RUN ON: A NODE =====
-cat /etc/issue.net
-sshd -T 2>/dev/null | grep -i banner
+systemctl is-enabled sshd.service
+systemctl is-active sshd.service
 ```
 
-### What the CLI shows
+If a local-console banner is required by something **other** than the
+OpenShift STIG — a site policy, or the RHEL STIG applied to the
+hardware — then it is a `MachineConfig` writing `/etc/issue`, and it
+costs a rolling reboot; batch it with
+[chapter 10's rollout](10-remediation.md#reboot-economics) rather than
+taking a reboot of its own. Record it as a site requirement, not as a
+CNTR-OS control, because it is not one.
 
-`oc login` is the interface nobody checks. Against an OpenID IdP it
-sends you to a browser, where you see the OAuth login template from
-step 1; against other flows it may show nothing at all.
+### 4. What the CLI shows
 
-> 🚧 **DRAFT -- NOT VALIDATED.** Written from documentation, not executed
-> against a cluster. Verify before running. Replace this block with the
-> command as run, then update VALIDATION.md.
+`oc login` is the interface nobody checks, and it is the one the
+earlier draft got most wrong: it said there was no documented way to
+put a banner in front of it. **There is.**
+
+The mechanism is a `ConfigMap` named `motd` in namespace `openshift`,
+with the key `data.message`. `oc` reads it on login and prints it.
+That is what `openshift_motd_exists` checks, and the DISA check text is
+literally "Login to OpenShift using the oc cli tool… If the DoD Notice
+and Consent Banner is not displayed, this is a finding."
+
+Two caveats, and both matter for what you can honestly write down:
+
+> ⚠️ **It prints *after* authentication, not before.** `oc` fetches the
+> token first and displays the message on the way out. The SRG wording
+> is "before granting access", and strictly this does not do that.
+> DISA accepts it anyway — the check text asks only whether the banner
+> appeared. Do not write "consent obtained before access" for the CLI
+> path; write what it is.
 >
-> There is no reliable documented way to put a banner in front of a
-> plain `oc login` prompt. Establish empirically what your users
-> actually see — run `oc login` the way they run it and look — and if
-> the answer is "nothing", that is a finding to record and discuss, not
-> a gap to paper over. Writing "banner configured" when the CLI path
-> shows none is precisely the untrue evidence-pack entry this
-> repository is built to avoid.
+> ⚠️ **A permissions failure is silently swallowed.** If the user
+> cannot read that ConfigMap, `oc` ignores the error and prints
+> nothing. No warning, no non-zero exit. So the banner can be
+> correctly configured, the rule can pass — it checks the ConfigMap,
+> not the user's access to it — and no human ever sees it.
+>
+> Whether an ordinary user can read it depends on RBAC that may not be
+> granted by default. Test as a real user, not as yourself:
+
+```sh
+# ===== RUN ON: THE CLUSTER =====
+oc auth can-i get configmap/motd -n openshift --as=<a-real-user>
+```
+
+A `no` there means the banner never displays for that person, and the
+scan will not tell you. Then log in as them and look.
 
 📌 **Handoff** The wording is not yours to write. Get the approved text
 from whoever owns it, in a form you can paste without editing, and keep
@@ -278,13 +376,18 @@ schedule today rather than in three weeks.
 > against a cluster. Verify before running. Replace this block with the
 > command as run, then update VALIDATION.md.
 >
-> The API server audit profile is believed to live on
-> `apiservers.config.openshift.io/cluster` at `spec.audit.profile`, with
-> values `Default`, `WriteRequestBodies`, `AllRequestBodies` and `None`.
-> The default captures metadata only, which is less than a hardened
-> build generally requires. Uncertain: which value your benchmark
-> expects — check what the scan actually asserts rather than assuming
-> the strictest is right.
+> The audit profile is on `apiservers.config.openshift.io/cluster` at
+> `spec.audit.profile`, values `Default`, `WriteRequestBodies`,
+> `AllRequestBodies` and `None` — confirmed, as is **which one the
+> benchmark expects**: `ocp4-stig` sets
+> `var_openshift_audit_profile=WriteRequestBodies`, so that is the
+> value the scan asserts and there is no need to guess at the
+> strictest. What is drafted is the patch below having been run.
+>
+> `Default` logs metadata on reads and writes but no request bodies —
+> except OAuth access-token requests. `WriteRequestBodies` adds the
+> body of every `create`, `update`, `patch`, `delete` and
+> `deletecollection`.
 
 ```sh
 # ===== RUN ON: THE CLUSTER =====
@@ -298,12 +401,28 @@ oc get clusteroperator kube-apiserver -w
 
 > ⚠️ **This rolls the API servers.** Not a node reboot, but a
 > control-plane rollout that takes several minutes per instance and, on
-> [single node](topologies/sno.md), is an API outage. And the volume
-> change is the part that bites later: `WriteRequestBodies` stores the
-> request body of every mutating call, and `AllRequestBodies` stores
-> reads too. Agree the retention number **and** the volume with the SIEM
-> owner before you turn it up, or you will turn it back down in a month
-> and have to explain why.
+> [single node](topologies/sno.md), is an API outage. Watch the
+> `NodeInstallerProgressing` condition reach `AllNodesAtLatestRevision`
+> rather than guessing when it is done. And the volume change is the
+> part that bites later: `WriteRequestBodies` stores the request body
+> of every mutating call, and `AllRequestBodies` stores reads too.
+> Agree the retention number **and** the volume with the SIEM owner
+> before you turn it up, or you will turn it back down in a month and
+> have to explain why.
+
+> ⚠️ **Do not write "all write request bodies are captured" in the
+> pack.** Even under `WriteRequestBodies`, three object types are
+> logged at **metadata level only** — `Secret`, `Route` and
+> `OAuthClient` — as are the OpenShift OAuth server's own events. That
+> is deliberate and correct, since the bodies are the secrets. But it
+> is an exception to the sentence everyone writes, and it is the kind
+> of overstatement an assessor checks. Write the exception alongside
+> the profile name.
+>
+> Scope, while you are recording it: the profile governs the OpenShift
+> API server, the Kubernetes API server, the OpenShift OAuth API
+> server and the OpenShift OAuth server. Not the nodes, and not the
+> kubelet.
 
 ### Forwarding it off-cluster
 
@@ -311,15 +430,28 @@ oc get clusteroperator kube-apiserver -w
 > against a cluster. Verify before running. Replace this block with the
 > command as run, then update VALIDATION.md.
 >
-> **The API group depends on which logging version prep mirrored, and
-> the two are not compatible.** Logging 6.x uses
-> `observability.openshift.io/v1` and requires an explicit service
-> account; Logging 5.x used `logging.openshift.io/v1` and did not. A
-> manifest written against the wrong one is rejected outright, which is
-> the good failure — the bad one is a valid manifest that silently
-> forwards nothing. Check with
-> `oc api-resources | grep -i clusterlogforwarder` before writing
-> anything, and treat the shape below as the 6.x case only.
+> On OpenShift 4.21 the API group is `observability.openshift.io/v1`.
+> `logging.openshift.io/v1` was **removed** in Logging 6.0, along with
+> the `ClusterLogging` resource and the Fluentd and Elasticsearch
+> collectors; Vector is the only collector now, and there is no
+> automated 5.x → 6.x upgrade. The shape below is the 6.x case and is
+> the only one that applies here. Check with
+> `oc api-resources | grep -i clusterlogforwarder` anyway.
+>
+> ⚠️ **The STIG's own fix text is wrong on 4.21.** The remediation
+> DISA ships for `audit_log_forwarding_enabled` at V2R6 tells you to
+> apply a `logging.openshift.io/v1` `ClusterLogForwarder`, which does
+> not exist on this cluster. Applied verbatim it fails. The *rule*
+> has caught up and checks both API groups; the fix text an assessor
+> reads has not. Expect to explain this, and keep the explanation
+> short: the benchmark is pinned to an older logging line than the
+> platform ships.
+>
+> **Version matters as a mirror-gate item, not just a detail.** OCP
+> 4.21 is supported by Logging **6.6** or **6.5**; 6.4 reached end of
+> maintenance in July 2026. Whichever prep mirrored is what you have,
+> and if it mirrored 6.4 or a 5.x line, this chapter stops until
+> there is another transfer window.
 
 ```yaml
 # ===== EDIT IN: ${OCP_INSTALL_ROOT}/day2/logging/audit-forwarder.yaml =====
@@ -345,7 +477,15 @@ spec:
 ```
 
 The service account needs permission to collect audit logs, which is a
-separate cluster role binding and is the step that gets skipped:
+separate cluster role binding — and the order is not optional:
+
+> ⚠️ **Bind the role first. Adding `audit` to `inputRefs` without the
+> `collect-audit-logs` binding does not fail the manifest — the
+> operator deletes the entire collector DaemonSet.** All log
+> collection stops, not just audit. The cluster goes from forwarding
+> application and infrastructure logs to forwarding nothing, and the
+> cause is a missing RBAC grant rather than anything the forwarder
+> says about itself.
 
 ```sh
 # ===== RUN ON: THE CLUSTER =====
@@ -353,13 +493,42 @@ oc create serviceaccount audit-collector -n openshift-logging
 oc adm policy add-cluster-role-to-user collect-audit-logs \
   -z audit-collector -n openshift-logging
 
-oc get clusterlogforwarder audit-forwarder -n openshift-logging -o yaml
-oc get pods -n openshift-logging
+# confirm the binding exists BEFORE applying the forwarder
+oc get clusterrolebinding -o wide | grep collect
 ```
+
+Then apply the forwarder, and check the resource agrees it is allowed:
+
+```sh
+# ===== RUN ON: THE CLUSTER =====
+oc get clusterlogforwarder audit-forwarder -n openshift-logging -o yaml
+oc get clusterlogforwarder audit-forwarder -n openshift-logging \
+  -o jsonpath='{.status.conditions[?(@.type=="Authorized")]}{"\n"}'
+oc get pods -n openshift-logging
+oc get daemonset -n openshift-logging
+```
+
+The `Authorized` condition is the one that catches the trap above, and
+the DaemonSet being present is the blunt version of the same check.
 
 `inputRefs: [audit]` is the whole control. A pipeline that forwards
 `application` and `infrastructure` but not `audit` looks like working
-log forwarding on every dashboard and satisfies nothing here.
+log forwarding on every dashboard and satisfies nothing here. The
+benchmark's own check is exactly that:
+
+```sh
+# ===== RUN ON: THE CLUSTER =====
+oc get clusterlogforwarders -n openshift-logging -o json |
+  jq -r '.items[].spec.pipelines[].inputRefs | contains(["audit"])'
+```
+
+**Two controls rest on this, and one of them is CAT I.**
+CNTR-OS-000170 (**high**) — "must initiate session audits at system
+startup" — and CNTR-OS-000220 (medium) — "must provide the ability to
+send audit logs to a central enterprise repository" — list the same
+four rules, including `audit_log_forwarding_enabled` and
+`cluster_logging_operator_exist`. Forwarding is not a nice-to-have
+medium finding; skipping it fails a high one.
 
 Two airgap-specific traps: the TLS trust for the SIEM endpoint is a
 secret you have to create, and the enclave's internal CA is not in the
@@ -389,17 +558,47 @@ keep their group membership; a binding added during an incident at 3am
 is never revisited. Nobody notices because nothing breaks.
 
 A scanner cannot do this. It can list who has what; it cannot say
-whether they should.
+whether they should — and unusually, the benchmark agrees while
+appearing not to.
 
-The review that is actually useful:
+> **CNTR-OS-000090 is marked `automated` and is not.** It is level
+> **high**, and its rule `rbac_least_privilege` ships no OVAL, no CEL
+> and no template. Its whole check is the prose below, and its failure
+> clause is the string "RBAC needs review". So it will appear in your
+> results as a check with a verdict, and that verdict means only that
+> the scanner looked at nothing. Budget for it here even though it
+> will not show up in a `MANUAL` selector.
+
+The benchmark's own prescribed review — worth using verbatim, because
+it is what the assessor's check text says:
 
 ```sh
 # ===== RUN ON: THE CLUSTER =====
-oc get clusterrolebinding -o wide
+oc describe clusterrole.rbac
+oc describe clusterrolebinding.rbac
+oc describe rolebinding.rbac
+```
+
+"If these results show users with privileged access that do not require
+that access, this is a finding." That is the whole test.
+
+More usefully for actually finding things:
+
+```sh
+# ===== RUN ON: THE CLUSTER =====
 oc get clusterrolebinding -o wide | grep cluster-admin
 oc get rolebinding -A -o wide
 oc adm policy who-can '*' '*'
 ```
+
+> **A citation note that matters if the pack is challenged.**
+> `oc adm policy who-can` and the three `oc describe …rbac` commands
+> are documented by Red Hat and are safe to cite as procedure.
+> `oc auth can-i --list --as=<user>` — which is the command most
+> engineers reach for and which does work — **does not appear in the
+> OpenShift authentication and authorization documentation at all.**
+> It is inherited kubectl behaviour. Use it to investigate; cite the
+> documented ones in the pack.
 
 For every cluster-admin holder: is it a **group** or a user? Chapter 7
 required a group binding for exactly this reason — a group binding moves
@@ -498,8 +697,26 @@ decided there and the cluster never sees it. There is no cluster-side
 configuration that satisfies this control and no cluster-side evidence
 that it is satisfied.
 
-This is why it is `MANUAL`, and why the evidence has to come from
-somewhere else.
+The benchmark says so itself. CNTR-OS-000430 is marked **not
+applicable** in the control file, with the justification: *"Applicable
+to Identity Management Provider and not OCP… Verify with IdM service
+provider admins that the IdM meets the requirements."* So the
+attestation below is not you working around a gap in the scan — it is
+the evidence the benchmark explicitly asks for in place of a check.
+
+> **The same justification covers CNTR-OS-000460, and that one carries
+> 27 SRG requirements.** It is level **high**, it is also marked not
+> applicable, and its justification pushes the entire FIPS-validated
+> LDAP/OIDC question onto the identity provider. That makes this
+> section the highest-leverage paragraph in the chapter: one
+> conversation with the IdP owner discharges two controls, one of them
+> high, and twenty-seven SRG mappings behind them.
+>
+> It also means the IdP owner is answering an accreditation question,
+> not doing you a favour. Ask in those terms, and get it in writing
+> from someone who can be held to it.
+
+This is why the evidence has to come from somewhere else.
 
 **Evidence** — from the IdP owner, not from the cluster:
 

@@ -44,16 +44,21 @@ back to [prep's Day-2 delta loop](https://github.com/bgregori/disconnected-prep/
 
 ## Status
 
-> ⚠️ **This repository is a skeleton.** The chapter structure, the
-> conventions and the decisions that have to be made are real. Most
-> procedures are not yet written, and are marked
-> `> **TODO:** needs validation on real hardware`.
+> ⚠️ **This repository is a first draft.** The chapter structure, the
+> conventions and the decisions that have to be made are real. The
+> procedures are now written, and **96 of them are marked**
+> `> 🚧 **DRAFT -- NOT VALIDATED**`.
 >
 > **Nothing here has been executed against a cluster.** Where a command
-> appears, it was carried across from disconnected-prep, which was run end
-> to end — see [VALIDATION.md](VALIDATION.md) for exactly which. Anything
-> not on that list is a heading and a statement of intent, deliberately
-> left empty rather than filled with a plausible guess.
+> appears without a draft marker, it was carried across from
+> disconnected-prep, which was run end to end — see
+> [VALIDATION.md](VALIDATION.md) for exactly which. **Everything else is
+> a draft: written from documentation and reasoning, never run.**
+>
+> A draft is a starting point for validation, not an instruction. Read
+> [the draft convention](#documentation-conventions) before you run any
+> of it, and treat every drafted block as wrong until you have proven
+> otherwise. The count above going down is this repository's progress.
 
 ## Start here
 
@@ -186,6 +191,31 @@ Markers used throughout:
 
 > **TODO:** — a procedure that has not been validated and so has not been
 > written. Treat an empty section as empty, not as "obvious".
+
+> 🚧 **DRAFT — NOT VALIDATED.** — a procedure written from documentation
+> and reasoning, but never executed against a cluster. Verify before
+> running.
+
+The difference between the last two matters, and it is the only place
+this repository knowingly departs from "empty rather than plausible".
+
+A `TODO` is a gap nobody has attempted. A `DRAFT` is a gap somebody has
+attempted on paper: it states what the step is believed to require, so
+that the person at the keyboard has something to verify rather than
+something to invent. It is a starting point for validation, **not an
+instruction**.
+
+Treat every `DRAFT` block as wrong until you have run it. When you do run
+it, replace the block with the command as executed — not as drafted, if
+the two differ — and move the chapter's row in
+[VALIDATION.md](VALIDATION.md#not-verified--the-honest-list). The drafts
+are scaffolding, and a chapter is not finished until its last one is gone.
+
+The marker is deliberately loud, and deliberately inside the prose rather
+than a footnote, because the failure this repository is built around is a
+reader with a printed copy who cannot tell a verified command from an
+invented one. A `DRAFT` block that reaches an evidence pack unchallenged
+is exactly the trap [VALIDATION.md](VALIDATION.md) describes.
 
 ## On STIG rule IDs
 

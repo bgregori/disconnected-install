@@ -15,6 +15,8 @@ Built by: ______________________  ISSO: ______________________
 
 ## 1. What this system is
 
+- [ ] `README.md` present: what this is, who built it, when, and the
+      order to read it in
 - [ ] `cluster-description.md` present and current
 - [ ] Topology: single node ☐ · three-node compact ☐ · multi-node ☐
 - [ ] OpenShift version: ____________
@@ -27,6 +29,16 @@ Built by: ______________________  ISSO: ______________________
 > read. Each entry is something that, if it goes away, degrades or
 > stops the cluster.
 
+- [ ] The README's **procedure provenance** statement is true: every
+      step in this pack was executed as the chapter now describes it,
+      and nothing here was produced by a step still written as a
+      draft. Any that were are listed as exceptions, not omitted.
+
+> This is the only claim in the pack that the assessor cannot check and
+> you can. One unreconciled step found later puts every other claim in
+> the pack back in question, which is a disproportionate price for
+> something that takes a morning to fix now.
+
 ## 2. Install-time controls
 
 | Control | Evidence | ✓ |
@@ -37,9 +49,14 @@ Built by: ______________________  ISSO: ______________________
 | Encryption mode | TPM v2 ☐ · Tang/NBDE ☐ · both ☐ · none, accepted ☐ | ☐ |
 | Supply chain | prep's `imageset-config.yaml` + transfer checksums + signed handoff contract | ☐ |
 | No internet egress | network team's record of denied outbound attempts during the install window | ☐ |
+| Build record | the manifests that were applied before ignition, as applied | ☐ |
+| What was typed | terminal transcript, one per host, covering the install window | ☐ |
 
 - [ ] `install-config.yaml` in the pack is **redacted** — the pull
       secret removed
+- [ ] The transcripts in the pack are redacted too. They contain the
+      pull secret, the IdP client secret and the `kubeadmin` password
+      unless somebody read them.
 
 ## 3. Authentication
 
@@ -61,8 +78,10 @@ Built by: ______________________  ISSO: ______________________
 
 ## 4. Encryption at rest
 
-- [ ] etcd encryption enabled — `APIServer` resource
-- [ ] Migration **complete**, not merely configured
+- [ ] etcd encryption enabled — `APIServer` resource showing the type
+- [ ] Migration **complete**, not merely configured — all three
+      `Encrypted` conditions captured, each reporting completion.
+      The `APIServer` resource alone evidences configuration only.
 - [ ] Either: a demonstration that a secret is unreadable in etcd
 - [ ] Or: a recorded decision **not** to run that check, with a reason
 
@@ -86,6 +105,13 @@ Built by: ______________________  ISSO: ______________________
 - [ ] `ERROR` results investigated, not counted as passes
 - [ ] On a multi-node cluster: per-node results, not just the
       profile-level verdict
+- [ ] The summaries the delta was computed from carry real values in
+      every column — a delta between two sets of blanks is clean and
+      meaningless
+- [ ] Raw machine-readable results: either captured off the cluster at
+      the time of each scan, **or** a recorded decision that this
+      assessor does not want them. They are not retrievable later —
+      the cluster keeps a small fixed number and discards the rest.
 
 ## 6. Exceptions register
 
@@ -131,8 +157,19 @@ Built by: ______________________  ISSO: ______________________
 - [ ] Client secret rotation owner and interval: ____________
 - [ ] Drift alerts (File Integrity) have a named recipient and a
       response procedure
+- [ ] What a **normal** patch cycle does to the per-node integrity
+      status is known, so that an alert means something. An integrity
+      monitor nobody believes is not a control.
+- [ ] Any node left in a failed integrity state has a disposition in
+      writing, the same way a scan `FAIL` does
+- [ ] Scheduled scans, if enabled, do **not** auto-apply remediations.
+      A cron entry that reboots nodes unreviewed undoes the review
+      discipline this pack is built on.
 - [ ] Understood: **patching is a transfer window**, typical lead time
       ____________
+- [ ] Prep still holds the mirror history that makes a delta cheap. If
+      it was lost, the next patch is a full re-mirror; the ISSO should
+      hear that number now rather than during an incident.
 
 ## 10. Questions to ask the ISSO directly
 

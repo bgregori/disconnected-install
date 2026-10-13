@@ -9,6 +9,9 @@ Environment: ______________________  Date: ____________  By: ____________
 
 ## 1. Intake — before anything was built
 
+- [ ] A terminal transcript was running on the install host **before the
+      first command** — chapter 12's build record is assembled from it,
+      and it cannot be started retrospectively
 - [ ] Handoff bundle checksums verified (`sha256sum -c SHA256SUMS`)
 - [ ] [Prep's handoff contract](https://github.com/bgregori/disconnected-prep/blob/main/checklists/handoff-contract.md)
       walked through **with the prep engineer**, not read alone
@@ -24,7 +27,13 @@ Environment: ______________________  Date: ____________  By: ____________
 - [ ] API and ingress VIPs confirmed **unused**
 - [ ] **Mirror gate:** compliance-operator, file-integrity-operator and
       diagnostics confirmed present in the mirror
-- [ ] IdP facts collected: issuer, client ID, secret, CA, claim names
+- [ ] IdP facts recorded: issuer, client ID, CA file, claim names
+- [ ] A token for a real member of the admin group was fetched **from
+      the IdP** and the group claim read out of it — present, and
+      carrying the bare group name
+- [ ] The IdP **client secret** is held where it will be read from at
+      the moment of use, not pasted into a config file or a shell
+      history
 - [ ] The group to be bound to `cluster-admin` exists and is populated
 
 ## 2. install-config.yaml
@@ -49,18 +58,22 @@ Environment: ______________________  Date: ____________  By: ____________
 - [ ] If TPM v2: TPM 2.0 present and enabled in firmware on every node
 - [ ] Chrony MachineConfig present, pointing at the enclave source
 - [ ] Default-deny project template in place, or deferred to day 1 with
-      a written note
-- [ ] Source manifests archived outside the install directory
+      the note written into the evidence pack — not agreed verbally
+- [ ] Source manifests archived outside the install directory, and the
+      archive is the one the evidence pack will carry
 
 ## 4. Install
 
-- [ ] ISO checksum recorded
+- [ ] ISO checksum recorded, so that the ISO named in the pack is
+      provably the ISO that booted
 - [ ] ISO unmounted from virtual media after installation
 - [ ] All nodes `Ready`
 - [ ] All cluster operators `Available=True`, `Progressing=False`,
       `Degraded=False`
 - [ ] `kubeconfig` and `kubeadmin-password` mode `0600`
-- [ ] Break-glass `kubeconfig` storage location **decided and recorded**
+- [ ] Break-glass `kubeconfig` storage location **decided and written
+      into the evidence pack**, naming who can retrieve it. A location
+      only you know is not a recorded location.
 
 ## 5. Day-1 cluster config
 
@@ -69,10 +82,21 @@ Environment: ______________________  Date: ____________  By: ____________
       before anything else was applied
 - [ ] `disableAllDefaultSources: true`
 - [ ] Mirrored `CatalogSource` still present and `READY`
-- [ ] `oc get packagemanifest -A` is non-empty
-- [ ] `/etc/containers/registries.conf.d/` populated on a node
-- [ ] Mirror-only pull path evidenced — including the network team's
-      record of denied outbound attempts
+- [ ] The operators this build actually needs are listed as
+      installable **by name** — at minimum compliance-operator and
+      file-integrity-operator. "The list is not empty" is not the
+      check; those two are, because chapters 9 and 13 stop without
+      them.
+- [ ] The mirror configuration CRI-O reads is populated **on a node** —
+      `/etc/containers/registries.conf.d/`. Checked on a node, because
+      the install host's copy proves nothing about the cluster's
+- [ ] Mirror-only pull path evidenced, all three parts:
+      - [ ] mirror configured — IDMS/ITMS applied, pools rolled out
+      - [ ] a pull observed resolving to the mirror rather than to the
+            upstream registry named in the manifest
+      - [ ] the network team's record of denied outbound attempts
+            during the install window. The cluster cannot prove this
+            part about itself.
 
 ## 6. Identity
 
@@ -96,9 +120,13 @@ Environment: ______________________  Date: ____________  By: ____________
 
 - [ ] Boot disk: `cryptsetup status root` shows LUKS2 on **every** node
 - [ ] Cipher `aes-cbc-essiv:sha256` (expected under FIPS)
-- [ ] etcd encryption enabled
-- [ ] etcd encryption **migration complete**, not merely configured
-- [ ] All three API server operators settled
+- [ ] etcd encryption enabled — the `APIServer` resource shows the type
+- [ ] etcd encryption **migration complete**, not merely configured:
+      all three `Encrypted` conditions report completion, and all three
+      outputs captured. A configured-but-unmigrated cluster reports the
+      type correctly and has not encrypted anything.
+- [ ] All three API server operators settled — `kube-apiserver`,
+      `openshift-apiserver`, `openshift-authentication`
 
 ## 8. Compliance baseline
 
@@ -108,6 +136,12 @@ Environment: ______________________  Date: ____________  By: ____________
       off the cluster
 - [ ] Operator version and benchmark revision recorded with it
 - [ ] `MANUAL` and `ERROR` results enumerated, not just `FAIL`
+- [ ] Baseline counts written down, all five, because the delta is
+      measured against them: PASS ____ FAIL ____ MANUAL ____
+      NOT-APPLICABLE ____ ERROR ____
+- [ ] The summary used for the delta contains **real values**, not
+      empty columns. A blank column diffs cleanly against another
+      blank column and reads as "nothing changed"
 
 ## 9. Remediation
 
@@ -156,6 +190,26 @@ Environment: ______________________  Date: ____________  By: ____________
 - [ ] Two nodes can carry the third's workload during a drain
 - [ ] etcd healthy before any rollout was started
 - [ ] Storage rebuild behaviour understood relative to rollout pace
+
+## 13. The record of what was done
+
+Do this while you still remember. None of it gets easier later, and
+one item on this list cannot be reconstructed at all.
+
+- [ ] Transcript closed cleanly, one per host, named for the host
+- [ ] Transcript **read**, and the credentials in it dealt with: a
+      redacted copy for the pack, the original stored where the
+      break-glass `kubeconfig` is
+- [ ] Every step that was run from a 🚧 **DRAFT** block has been
+      replaced in the chapter by the command as actually run, and the
+      validation record updated. A draft that produced evidence and
+      was never reconciled is the one defect in this list that nobody
+      downstream can detect.
+- [ ] Where a drafted step turned out to be wrong, **what was wrong**
+      is written down, not just the correction
+- [ ] Manifests, install-config (redacted), scan results and
+      transcripts all copied **off** the install host and off the
+      cluster. The pack has to survive a rebuild of either.
 
 ---
 

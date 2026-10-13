@@ -9,13 +9,18 @@ readers need:
 
 > **Nothing in this repository has been executed against a cluster.**
 
-This is a skeleton. The chapter structure, the ordering, the decisions
-and the failure modes are real and reasoned. The procedures are, for the
-most part, deliberately absent.
+The chapter structure, the ordering, the decisions and the failure modes
+are real and reasoned. The procedures are now drafted — written from
+documentation, never run — and every one of them carries a marker saying
+so. **96 drafted blocks, zero validated.**
+
+That ratio is the state of this repository, and it is the number to
+watch. It goes down one procedure at a time, and only by someone
+standing in front of a cluster.
 
 ---
 
-## Why it is empty rather than plausible
+## Why it was empty rather than plausible
 
 A reader with a printed copy cannot tell a verified command from an
 invented one. Both are monospaced. Both look authoritative. The second
@@ -33,6 +38,51 @@ it prevents, and marks it:
 
 An empty section is a known gap. A fabricated one is a trap. The whole
 repository is built on preferring the first.
+
+---
+
+## The third state: drafts
+
+An empty section is honest, and it is also unusable. Someone standing in
+front of a cluster with a change window open needs something to verify,
+and "this section is deliberately blank" sends them to a search engine,
+where they will find a command written for a connected, non-FIPS,
+unhardened cluster and run it anyway.
+
+So there is a third state between *empty* and *validated*:
+
+```
+> 🚧 **DRAFT -- NOT VALIDATED.** Written from documentation, not
+> executed against a cluster. Verify before running. Replace this
+> block with the command as run, then update VALIDATION.md.
+```
+
+The rules that keep this from becoming the fabrication the section above
+rejects:
+
+1. **A draft is marked at the point of use**, immediately above the block
+   it covers — never once at the top of a chapter, never in a footnote.
+   The marker has to survive being printed, photocopied and read out of
+   order.
+2. **A draft is never evidence.** No `DRAFT` block, and no output
+   produced by running one, belongs in the evidence pack until the block
+   has been replaced by the command as actually run. See
+   [12-evidence-pack.md](docs/12-evidence-pack.md).
+3. **Where a wrong guess is unrecoverable, the draft says so and keeps
+   its gate.** Disk encryption in [03](docs/03-manifests.md), deleting
+   `kubeadmin` in [07](docs/07-identity.md), the etcd migration in
+   [08](docs/08-encryption-at-rest.md). These are drafted like everything
+   else — a blank section sends the reader somewhere worse — but the
+   draft marker carries the consequence with it, and any checklist
+   already guarding the step stays in front of it. The gate is not part
+   of the draft and is not provisional.
+4. **A draft is replaced, not ticked.** Validating it means overwriting
+   it with what was really run — which is frequently not what was
+   drafted — and that difference is the most valuable thing the exercise
+   produces. Record it.
+
+Drafts are scaffolding. A chapter is finished when it has none left, and
+the count going down is the real measure of this repository's progress.
 
 ---
 
@@ -106,26 +156,65 @@ which point every other citation is in question. See
 ## Not verified — the honest list
 
 Everything else. Stated by chapter so the gaps are navigable rather than
-a single disclaimer:
+a single disclaimer. The draft count is the number of blocks in that
+chapter carrying a `🚧 DRAFT` marker — each one a procedure somebody has
+to stand in front of a cluster and prove.
 
-| Chapter | Status |
-|---|---|
-| [01 Intake](docs/01-intake.md) | **Mostly real.** Checks are generic shell or carried from prep. The mirror content gate and the Keycloak `groups` claim are TODO. |
-| [02 install-config](docs/02-install-config.md) | **Partly real.** The three disconnected requirements and the pull secret come from prep. Topology, networking and schema validation are TODO. |
-| [03 Manifests](docs/03-manifests.md) | **Mostly TODO.** The window, the stakes and the decisions are real; the MachineConfig content for disk encryption, chrony and the project template is not written. |
-| [04 Agent ISO](docs/04-agent-iso.md) | **Mostly TODO.** The FIPS host requirement is from prep. The generation command and boot procedure are not written. |
-| [05 First access](docs/05-first-access.md) | **Partly real.** Credential handling and the cluster-operator checks are real; bootstrap watch and the pull-path proof are TODO. |
-| [06 Day-1 config](docs/06-day1-cluster-config.md) | **Mostly real** — it is prep's post-install step, restated. OSUS and the full pull-path proof are TODO. |
-| [07 Identity](docs/07-identity.md) | **Structure real, commands TODO.** The ordering, the gate before deleting `kubeadmin` and the five rules are the substance. No `Secret`, `ConfigMap`, `OAuth` CR or deletion command is written. |
-| [08 Encryption at rest](docs/08-encryption-at-rest.md) | **Mostly TODO.** The distinction from disk encryption, and the configured-versus-migrated trap, are real. |
-| [09 Compliance Operator](docs/09-compliance-operator.md) | **Partly real.** The baseline-first argument, capture commands and result taxonomy are real. Install manifests, `ScanSettingBinding` and the label selectors are TODO. |
-| [10 Remediation](docs/10-remediation.md) | **Partly real.** Reboot economics, the review discipline and the delta capture are real. The review and apply mechanism is TODO. |
-| [11 Manual controls](docs/11-manual-controls.md) | **Mostly real as a process.** What each control requires and what evidence satisfies it is written; the configuration for banner and audit forwarding is TODO. |
-| [12 Evidence pack](docs/12-evidence-pack.md) | **Real.** Structure, not procedure — nothing here needs hardware. |
-| [13 Day-2](docs/13-day2.md) | **Partly real.** The handback to prep and the drift table are real. Upgrade procedure, scheduled scans and File Integrity are TODO. |
-| [topologies/sno](docs/topologies/sno.md) | **Outage semantics real, configuration TODO.** |
-| [topologies/compact](docs/topologies/compact.md) | **Outage semantics real, configuration TODO.** |
-| [troubleshooting](docs/troubleshooting.md) | **Partly real.** Failures inherited from prep are written; cluster-side diagnostics are TODO. |
+| Chapter | Drafts | Status |
+|---|---|---|
+| [01 Intake](docs/01-intake.md) | 3 | **Mostly real.** Checks are generic shell or carried from prep. The mirror content gate, PTR records and the Keycloak `groups` claim are drafted. |
+| [02 install-config](docs/02-install-config.md) | 4 | **Partly real.** The three disconnected requirements and the pull secret come from prep. Topology, networking, schema validation and `agent-config.yaml` are drafted. |
+| [03 Manifests](docs/03-manifests.md) | 6 | **Drafted, and the chapter's premise is in question** — see the warning below. Disk encryption, chrony and the project template are drafted. |
+| [04 Agent ISO](docs/04-agent-iso.md) | 3 | **Drafted.** The FIPS host requirement is from prep. Generation, boot and watch are drafted. No timings are given, deliberately. |
+| [05 First access](docs/05-first-access.md) | 3 | **Partly real.** Credential handling and the cluster-operator checks are real; bootstrap watch and the pull-path proof are drafted. |
+| [06 Day-1 config](docs/06-day1-cluster-config.md) | 3 | **Mostly real** — it is prep's post-install step, restated. OSUS and the full pull-path proof are drafted; the OSUS draft is the weakest in the repository. |
+| [07 Identity](docs/07-identity.md) | 9 | **Structure real, commands drafted.** The ordering, the gate before deleting `kubeadmin` and the five rules are the substance and are unchanged. Every resource and the deletion command are drafted. |
+| [08 Encryption at rest](docs/08-encryption-at-rest.md) | 4 | **Drafted.** The distinction from disk encryption and the configured-versus-migrated trap are real. The FIPS cipher choice is deliberately left unasserted. |
+| [09 Compliance Operator](docs/09-compliance-operator.md) | 7 | **Partly real.** The baseline-first argument, capture commands and result taxonomy are real. Install manifests, `ScanSettingBinding` and label selectors are drafted. |
+| [10 Remediation](docs/10-remediation.md) | 8 | **Partly real.** Reboot economics, review discipline and delta capture are real. Review/apply/decline are drafted. Reboot timings are a drafted *method*, not figures. |
+| [11 Manual controls](docs/11-manual-controls.md) | 9 | **Mostly real as a process.** Banner (three distinct things), audit forwarding and RBAC review are drafted. |
+| [12 Evidence pack](docs/12-evidence-pack.md) | 1 | **Real.** Structure, not procedure — nothing here needs hardware. Its one `TODO` is a question for a human, not a hardware gap, and stays a `TODO`. |
+| [13 Day-2](docs/13-day2.md) | 9 | **Partly real.** The handback to prep and the drift table are real. Upgrade, scheduled scans and File Integrity are drafted. |
+| [topologies/sno](docs/topologies/sno.md) | 9 | **Outage semantics real, configuration drafted.** |
+| [topologies/compact](docs/topologies/compact.md) | 8 | **Outage semantics real, configuration drafted.** Rollout timings are a drafted method, not figures. |
+| [troubleshooting](docs/troubleshooting.md) | 8 | **Partly real.** Failures inherited from prep are written and validated; cluster-side diagnostics are drafted. |
+| [appendix STIG](docs/appendix-stig-cluster.md) | 2 | **Conceptual.** Not procedure. The rule-ID policy and the FIPS/benchmark interaction are reasoned, not measured. |
+
+### Known problems in the drafted text
+
+Found while drafting, not yet resolved. Each is a real question about
+the existing content rather than a gap in it:
+
+- **Chapter 3's window may not exist in the agent workflow.** The
+  chapter is built around a pause between `create manifests` and
+  `create ignition-configs`, and the agent-based installer appears not
+  to have one — `openshift/` is a directory you create and fill before
+  generating anything. The ASCII diagram and the chapter's framing are
+  therefore suspect. The chapter states this beneath the diagram and
+  carries a self-invalidating check. **Resolve this first**; it is the
+  highest-stakes unresolved question in the repository.
+- **`NOT-APPLICABLE` versus `NOTAPPLICABLE`.** Chapter 9's results
+  table prints the hyphenated form; upstream CRD documentation gives
+  the unhyphenated one as the allowed value. A label selector copied
+  from the table would match nothing and report zero, which reads as a
+  clean scan. Unresolved, and flagged in chapter 9.
+- **The two-profile model may be incomplete.** Some content revisions
+  ship `ocp4-stig-node` alongside `ocp4-stig` and `rhcos4-stig`.
+  Omitting a third profile also produces a gap that reads as a pass.
+- **There may be no cluster-side "declined" state for a remediation.**
+  If so, `apply: false` is indistinguishable from "nobody looked", and
+  the exceptions register is the *only* record rather than the
+  recommended one.
+- **Chapter 7's step order has a dependency the skeleton did not
+  model.** `Group` objects only materialise after a member's first IdP
+  login, so step 4 cannot read the authoritative group name until
+  something like step 6 has happened. Handled inside step 4; the
+  chapter-level ordering claim may still want revisiting.
+- **Chapter 2's `.bak` block fails on first run** — it copies
+  `install-config.yaml` before the file exists.
+- **Chapter 1's mirror gate omits a storage operator.** Both topology
+  pages need one (LVM Storage for single node, ODF for compact), which
+  is a mirror-gate item by chapter 1's own logic.
 
 Beyond the chapters:
 
@@ -146,12 +235,23 @@ Beyond the chapters:
 
 When a procedure is validated:
 
-1. Replace the `TODO` block with the command, as run.
-2. Add a row to **What has been validated** above, naming the
+1. Replace the `DRAFT` block — marker and all — with the command **as
+   run**. Not as drafted, if the two differ.
+2. Decrement the chapter's draft count in the table above, and the
+   repository total at the top of this file.
+3. Add a row to **What has been validated** above, naming the
    environment and the date.
-3. Move the chapter's row in the table out of TODO.
-4. If a rule ID was confirmed, add it to the rules table **with the
+4. If the draft was wrong, write down how. See below.
+5. If a rule ID was confirmed, add it to the rules table **with the
    benchmark revision**.
+
+Removing the marker without changing anything else is the one move that
+defeats the whole scheme. If the drafted command turned out to be exactly
+right, say so explicitly in the validation row — "drafted command
+confirmed unchanged" — so that a reader can tell a verified draft from an
+unreviewed one. They look identical on the page otherwise, which is the
+same failure this repository was built to avoid, arriving by a different
+route.
 
 Record what failed as well as what worked. Prep's most useful section is
 its list of twenty-one bugs that passed review and failed on real

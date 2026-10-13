@@ -71,6 +71,18 @@ kill-server` first.
 
 ## The install host
 
+> **Script:** `./scripts/00-preflight.sh` runs every check in this
+> section and the next one — host, FIPS mode, tooling, install tree,
+> handoff bundle — and prints a tally. It changes nothing. Everything
+> below is what it runs, under **By hand**; following those alone
+> produces the same result, which is the point if the repository
+> cannot come into the enclave with you.
+>
+> It deliberately stops short of
+> [the environment checks](#the-environment-checked-from-where-it-matters):
+> those have to run from the node network, and a pass from the install
+> host proves nothing about what a node sees.
+
 One host, and it is not necessarily either of prep's two.
 
 | | Requirement |

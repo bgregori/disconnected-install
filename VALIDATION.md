@@ -12,11 +12,22 @@ readers need:
 The chapter structure, the ordering, the decisions and the failure modes
 are real and reasoned. The procedures are now drafted — written from
 documentation, never run — and every one of them carries a marker saying
-so. **95 drafted blocks, zero validated.**
+so. **94 drafted blocks, zero validated.**
 
 That ratio is the state of this repository, and it is the number to
 watch. It goes down one procedure at a time, and only by someone
 standing in front of a cluster.
+
+It is also checked rather than remembered.
+[`scripts/check-docs.py`](scripts/README.md) counts the markers and
+fails if this number, the per-chapter table below, or the README
+disagree. That is not belt and braces: the count was stated as 96 in
+the first drafting pass and is 94, and **both** errors were in the
+direction that flattered the repository. One was a chapter credited
+with a draft it did not have; the other was a near-miss marker —
+`NOT VALIDATED` without the closing period — that matched nothing and
+was invisible to a count done by eye. Neither is detectable by a
+reader, which is the whole problem.
 
 ---
 
@@ -177,7 +188,7 @@ to stand in front of a cluster and prove.
 | [13 Day-2](docs/13-day2.md) | 9 | **Partly real.** The handback to prep and the drift table are real. Upgrade, scheduled scans and File Integrity are drafted. |
 | [topologies/sno](docs/topologies/sno.md) | 9 | **Outage semantics real, configuration drafted.** |
 | [topologies/compact](docs/topologies/compact.md) | 8 | **Outage semantics real, configuration drafted.** Rollout timings are a drafted method, not figures. |
-| [troubleshooting](docs/troubleshooting.md) | 8 | **Partly real.** Failures inherited from prep are written and validated; cluster-side diagnostics are drafted. |
+| [troubleshooting](docs/troubleshooting.md) | 7 | **Partly real.** Failures inherited from prep are written and validated; cluster-side diagnostics are drafted. |
 | [appendix STIG](docs/appendix-stig-cluster.md) | 2 | **Conceptual.** Not procedure. The rule-ID policy and the FIPS/benchmark interaction are reasoned, not measured. |
 
 ### Known problems in the drafted text

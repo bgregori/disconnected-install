@@ -117,6 +117,27 @@ ${OCP_INSTALL_ROOT}/evidence/
     └── (checksums and the imageset-config, not the 29 GB archive)
 ```
 
+> **Script:** `./scripts/90-evidence-pack.sh` builds that skeleton,
+> copies in what chapters 3 through 11 captured, checksums the result
+> and then lists what is still missing — exiting non-zero while
+> anything is. It writes none of the prose: `README.md`,
+> `cluster-description.md`, `exceptions-register.md` and
+> `deviations.md` are arguments addressed to a person, and a generated
+> one is a template an assessor has seen before.
+>
+> It also will not redact for you. It checks that
+> `install-config.yaml.redacted` no longer contains anything shaped
+> like a credential and stops if it does, but a regex that
+> half-redacts a pull secret is worse than one that never ran, because
+> it produces a file everyone believes is safe.
+>
+> And it cannot tell you the pack is finished. It has no way to know
+> whether a step was run from a 🚧 **DRAFT** block and never
+> reconciled, which is the one defect in the pack nobody downstream
+> can detect.
+
+### By hand
+
 ```sh
 # ===== RUN ON: THE CLUSTER =====
 : "${OCP_INSTALL_ROOT:?set it first -- see 01-intake.md}"

@@ -10,8 +10,8 @@ duplicated here.
 
 > Most of this file is drafted, not validated. The sections below are
 > the failures worth expecting; the ones carried from prep have been
-> seen, and the cluster-side ones are marked
-> 🚧 **DRAFT -- NOT VALIDATED** at the point of use. A troubleshooting
+> seen, and the cluster-side ones carry a 🚧 **DRAFT** marker at the
+> point of use. A troubleshooting
 > guide read as fact when it was assembled from documentation is worse
 > than an empty one — it sends people down paths that do not exist, at
 > the moment they are least able to tell. Check the marker before you

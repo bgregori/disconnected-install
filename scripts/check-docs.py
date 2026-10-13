@@ -32,12 +32,20 @@ import sys
 
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
-# The marker as it appears at the point of use. Matched on the literal
-# string rather than loosely on "DRAFT", so that prose *about* drafts --
-# the convention sections in README and VALIDATION, the checklist item
-# about reconciling them -- does not inflate the count. That distinction
-# is what the first drift was made of.
-DRAFT_MARKER = re.compile(r"🚧 \*\*DRAFT")
+# Two forms, and keeping them apart is the whole job.
+#
+#   🚧 **DRAFT -- NOT VALIDATED.**   a marker, at the point of use, counted
+#   🚧 **DRAFT**                     prose *about* the convention, not counted
+#
+# Matching loosely on "DRAFT" counts the prose and inflates the total;
+# that is one of the two errors the first hand-maintained count was made
+# of. But the dangerous direction is the other one -- a mistyped marker
+# that matches neither pattern vanishes from the count silently and
+# makes the repository look more validated than it is. So anything that
+# looks like a marker and is neither form is a hard failure.
+DRAFT_MARKER = re.compile(r"🚧 \*\*DRAFT -- NOT VALIDATED\.\*\*")
+DRAFT_PROSE = re.compile(r"🚧 \*\*DRAFT\*\*")
+DRAFT_ANY = re.compile(r"🚧 \*\*DRAFT")
 
 # Chapters carry drafts and are counted. Everything else is prose about
 # the scheme rather than subject to it.
@@ -124,9 +132,26 @@ def check_drafts():
 
     counts = {}
     for path in markdown_files():
+        text = read(path)
+
+        # Malformed markers are checked everywhere, not just in docs/.
+        # A marker that matches neither form is invisible to the count,
+        # and invisible in the direction that flatters the repository.
+        for number, line in enumerate(text.split("\n"), 1):
+            for match in DRAFT_ANY.finditer(line):
+                tail = line[match.start():]
+                if DRAFT_MARKER.match(tail) or DRAFT_PROSE.match(tail):
+                    continue
+                problems.append(
+                    f"{rel(path)}:{number}: malformed draft marker. Use "
+                    f"'🚧 **DRAFT -- NOT VALIDATED.**' for a marker at the "
+                    f"point of use, or '🚧 **DRAFT**' when writing about "
+                    f"the convention. Anything else is uncounted."
+                )
+
         if rel(path).split(os.sep)[0] not in COUNTED_DIRS:
             continue
-        counts[rel(path)] = len(DRAFT_MARKER.findall(read(path)))
+        counts[rel(path)] = len(DRAFT_MARKER.findall(text))
     total = sum(counts.values())
 
     validation = read(os.path.join(REPO_ROOT, "VALIDATION.md"))

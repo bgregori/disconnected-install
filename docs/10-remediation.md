@@ -465,7 +465,17 @@ oc get compliancecheckresult -A \
 ```
 
 Then the delta, which is the single most useful page in the evidence
-pack:
+pack.
+
+> **Script:** `./scripts/72-delta.sh` does this and reads it back for
+> you. It takes the two directories, refuses to run if either
+> `summary.txt` has an empty status column, and writes a per-check
+> **transition** table alongside the raw diff — so a single
+> `PASS` → `FAIL` cannot hide among sixty `FAIL` → `PASS` lines. It
+> touches only files already on disk and makes no call to the cluster,
+> which is why it exists while the rest of this chapter does not.
+
+### By hand
 
 ```sh
 # ===== RUN ON: THE CLUSTER =====
@@ -474,6 +484,16 @@ BASELINE=${OCP_INSTALL_ROOT}/evidence/<date>-baseline
 diff ${BASELINE}/summary.txt ${AFTER}/summary.txt > ${AFTER}/delta.txt
 awk '{print $2}' ${BASELINE}/summary.txt | sort | uniq -c
 awk '{print $2}' ${AFTER}/summary.txt    | sort | uniq -c
+```
+
+The transitions, which the raw diff does not give you directly:
+
+```sh
+# ===== RUN ON: THE CLUSTER =====
+join -j1 \
+  <(awk '{print $1, $2}' ${BASELINE}/summary.txt | sort) \
+  <(awk '{print $1, $2}' ${AFTER}/summary.txt    | sort) \
+  | awk '$2 != $3 {print $2 " -> " $3 "\t" $1}' | sort
 ```
 
 Two counts and a diff. Read the diff in both directions:

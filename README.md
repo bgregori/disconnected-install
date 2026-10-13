@@ -46,8 +46,8 @@ back to [prep's Day-2 delta loop](https://github.com/bgregori/disconnected-prep/
 
 > ⚠️ **This repository is a first draft.** The chapter structure, the
 > conventions and the decisions that have to be made are real. The
-> procedures are now written, and **95 of them are marked**
-> `> 🚧 **DRAFT -- NOT VALIDATED**`.
+> procedures are now written, and **94 of them are marked**
+> `> 🚧 **DRAFT -- NOT VALIDATED.**`.
 >
 > **Nothing here has been executed against a cluster.** Where a command
 > appears without a draft marker, it was carried across from
@@ -76,9 +76,9 @@ shows what that script runs, under a **"By hand"** heading.
 | 7 | [Identity](docs/07-identity.md) | — | cluster |
 | 8 | [Encryption at rest](docs/08-encryption-at-rest.md) | — | cluster |
 | 9 | [Compliance Operator](docs/09-compliance-operator.md) | — | cluster |
-| 10 | [Remediation](docs/10-remediation.md) | — | cluster |
+| 10 | [Remediation](docs/10-remediation.md) | `72-delta.sh` | cluster |
 | 11 | [Manual controls](docs/11-manual-controls.md) | — | cluster |
-| 12 | [Evidence pack](docs/12-evidence-pack.md) | — | cluster |
+| 12 | [Evidence pack](docs/12-evidence-pack.md) | `90-evidence-pack.sh` | cluster |
 | 13 | [Day-2](docs/13-day2.md) | — | both |
 
 Topology deltas are separate, because they are the only part that differs
@@ -193,9 +193,18 @@ Markers used throughout:
 > **TODO:** — a procedure that has not been validated and so has not been
 > written. Treat an empty section as empty, not as "obvious".
 
-> 🚧 **DRAFT — NOT VALIDATED.** — a procedure written from documentation
+> 🚧 **DRAFT -- NOT VALIDATED.** — a procedure written from documentation
 > and reasoning, but never executed against a cluster. Verify before
 > running.
+
+That exact string is the marker, and it is the only form that counts.
+When writing *about* the convention rather than marking a block — as
+this section does, and as
+[the install checklist](checklists/install-acceptance.md) does — use the
+bare 🚧 **DRAFT** instead. A near-miss between the two is a marker that
+vanishes from the count, which is why
+[`scripts/check-docs.py`](scripts/README.md) rejects anything that is
+neither.
 
 The difference between the last two matters, and it is the only place
 this repository knowingly departs from "empty rather than plausible".

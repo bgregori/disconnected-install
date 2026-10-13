@@ -224,10 +224,32 @@ wildcard with a literal `*` tests nothing — use any name under `.apps.`.
 
 Reverse records matter too on some agent-based installs.
 
-> **TODO:** needs validation on real hardware — whether the agent-based
-> installer requires PTR records for the node addresses in this topology,
-> and what it reports when they are absent. State the requirement only
-> once it has been observed.
+> 🚧 **DRAFT -- NOT VALIDATED.** Written from documentation, not executed
+> against a cluster. Verify before running. Replace this block with the
+> command as run, then update VALIDATION.md.
+>
+> What is uncertain is not the check but the requirement. The agent-based
+> installer takes each node's name from the `hostname:` field in
+> `agent-config.yaml` when one is set, and from DHCP when it is not;
+> reverse DNS is what fills the gap when neither does. So whether a
+> missing PTR is fatal depends on a file you have not written yet
+> ([02-install-config.md](02-install-config.md)). Run the check anyway —
+> it is twenty seconds — and **record what the installer actually says
+> when a record is absent**, because that sentence is the thing worth
+> having and nobody has seen it here.
+
+```sh
+# ===== RUN ON: A NODE =====
+for ip in <node-ip-1> <node-ip-2> <node-ip-3>; do
+  printf '%-16s -> %s\n' "${ip}" "$(dig +short -x "${ip}" || true)"
+done
+```
+
+An empty right-hand column is the thing to resolve before boot. The
+failure it guards against is a node that comes up named
+`localhost.localdomain`, which does not join and does not say why — set
+`hostname:` explicitly for every host in `agent-config.yaml` and the
+question stops mattering.
 
 ### Time
 
@@ -281,6 +303,15 @@ not already in the registry.** Specifically this repository later needs
 | [09](09-compliance-operator.md) | `compliance-operator`, and the `ocp4-stig` / `rhcos4-stig` profile content it ships |
 | [13](13-day2.md) | `file-integrity-operator` |
 | [05](05-first-access.md), [troubleshooting](troubleshooting.md) | `must-gather` and `support-tools` diagnostic images |
+| [sno](topologies/sno.md) | **LVM Storage** — if the topology is single node |
+| [compact](topologies/compact.md) | **OpenShift Data Foundation** — if the topology is three-node compact |
+
+The last two are easy to miss because they belong to a topology rather
+than a chapter, and the topology is chosen elsewhere. A cluster with no
+storage operator installs perfectly and then has nowhere to put a
+`PersistentVolumeClaim`, which surfaces as a workload problem weeks
+later rather than an install one. Check whichever applies to the shape
+you are building, and only that one.
 
 Nothing identity-related appears in that list, and that is deliberate: the
 IdP is Red Hat build of Keycloak running **outside** the cluster, on a
@@ -299,15 +330,74 @@ Then confirm the images are actually present in the registry, rather than
 merely named in a config file — a mirror run can be configured correctly
 and still have failed partway.
 
-> **TODO:** needs validation on real hardware — the exact per-image check
-> that proves the compliance content is pullable from the mirror. Prep
-> established that mirrored operator images are **digest-referenced, not
-> tagged**, so the obvious `oc image info <repo>:latest` fails against a
-> healthy mirror, and that Quay's `_catalog` endpoint rejects basic auth.
-> Work out the correct form against a real registry before writing it
-> here. Until then, treat prep's
-> [`80-verify-mirror.sh`](https://github.com/bgregori/disconnected-prep/blob/main/scripts/80-verify-mirror.sh)
-> exit status as the gate and record who ran it, on which host, and when.
+> 🚧 **DRAFT -- NOT VALIDATED.** Written from documentation, not executed
+> against a cluster. Verify before running. Replace this block with the
+> command as run, then update VALIDATION.md.
+>
+> Two established facts shape this and both break the obvious command.
+> Mirrored operator images are **digest-referenced, not tagged**, so
+> `oc image info <repo>:latest` fails against a *healthy* mirror — a
+> failure here means nothing until you know which kind it is. And Quay's
+> `_catalog` endpoint rejects basic auth, so enumerating the registry
+> from outside is not the route. The draft below goes through the catalog
+> image instead, which **is** tagged, and reads the digests out of it.
+> What is unverified is the catalog's on-disk layout under `/configs/`
+> and whether prep's mirror names the catalog repository the way this
+> assumes.
+
+Point `oc` at the bundle's credentials and the bundle's CA first. It does
+not find either on its own, and the error when it cannot is a 401 that
+reads like a mirror problem rather than a local one:
+
+```sh
+# ===== RUN ON: THE INSTALL HOST =====
+: "${OCP_INSTALL_ROOT:?set it first -- see 01-intake.md}"
+export REGISTRY_AUTH_FILE=${OCP_INSTALL_ROOT}/handoff/pull-secret.json
+sudo cp ${OCP_INSTALL_ROOT}/handoff/certs/rootCA.pem \
+        /etc/pki/ca-trust/source/anchors/mirror-rootCA.pem
+sudo restorecon -v /etc/pki/ca-trust/source/anchors/mirror-rootCA.pem
+sudo update-ca-trust extract
+```
+
+Then the catalog, which is the one tagged thing in the mirror:
+
+```sh
+# ===== RUN ON: THE INSTALL HOST =====
+: "${OCP_INSTALL_ROOT:?set it first -- see 01-intake.md}"
+oc image info registry.airgap.local:8443/redhat/redhat-operator-index:v4.21
+
+mkdir -p ${OCP_INSTALL_ROOT}/catalog-check
+oc image extract \
+  registry.airgap.local:8443/redhat/redhat-operator-index:v4.21 \
+  --path /configs/:${OCP_INSTALL_ROOT}/catalog-check/
+
+ls ${OCP_INSTALL_ROOT}/catalog-check/ | grep -E 'compliance|file-integrity'
+```
+
+A package directory present in the catalog proves the catalog knows about
+the operator. It does **not** prove the operator's images came across.
+For that, take one digest the catalog names and ask the registry for it
+directly:
+
+```sh
+# ===== RUN ON: THE INSTALL HOST =====
+: "${OCP_INSTALL_ROOT:?set it first -- see 01-intake.md}"
+grep -ho 'sha256:[0-9a-f]\{64\}' \
+  ${OCP_INSTALL_ROOT}/catalog-check/compliance-operator/* | sort -u | head -3
+
+oc image info registry.airgap.local:8443/compliance/<repo>@sha256:<digest>
+```
+
+`oc image info` returning a manifest is the pass. A 404 against a digest
+the catalog names is the exact failure this gate exists to catch: a
+mirror configured correctly that failed partway, which looks fine from
+every other angle until chapter 9 hangs in `InstallPlanPending`.
+
+Until the above has been run for real, the gate is prep's
+[`80-verify-mirror.sh`](https://github.com/bgregori/disconnected-prep/blob/main/scripts/80-verify-mirror.sh)
+exit status — record who ran it, on which host, and when. That is a
+validated check and the block above is not; prefer it, and treat the
+draft as the thing you are trying to replace it with.
 
 If content is missing, stop. The answer is a prep Day-2 delta — see
 [13-day2.md](13-day2.md) — and that is a transfer window, measured in
@@ -336,11 +426,66 @@ not include group membership in the token by default, and a cluster that
 authenticates perfectly but assigns nobody any privileges looks like an
 RBAC problem rather than a claim-mapper problem.
 
-> **TODO:** needs validation on real hardware — the Keycloak-side
-> configuration that emits a `groups` claim in the form the cluster's
-> OpenID provider expects, and what the cluster logs when it is absent.
-> Verify against the RHBK version actually deployed; this has changed
-> between Keycloak major versions.
+> 🚧 **DRAFT -- NOT VALIDATED.** Written from documentation, not executed
+> against a cluster. Verify before running. Replace this block with the
+> command as run, then update VALIDATION.md.
+>
+> **Verify against the RHBK version actually deployed.** Group-membership
+> mapper behaviour has changed between Keycloak major versions, and this
+> is written from the general Keycloak model rather than from a
+> configured realm. What is being established is a fact about the IdP, so
+> get it in writing from the IdP owner as well as observing it.
+
+On the IdP, the client used by this cluster needs a **Group Membership**
+protocol mapper. The settings that matter:
+
+> The same mapper is drafted again, in `kcadm.sh` form, at
+> [07 — step 3a](07-identity.md#3a--the-keycloak-side). That is
+> deliberate: here it is a fact to *collect and agree* before anything
+> is built, there it is a thing to *configure*. The two must say the
+> same thing — in particular both set the full-path behaviour off — and
+> if you change one, change the other.
+
+| Setting | Value | Why |
+|---|---|---|
+| Mapper type | Group Membership | The claim does not exist otherwise. |
+| Token Claim Name | `groups` | Must match the `groups` claim name chapter 7 configures. The name is not freely chosen on one side only. |
+| Full group path | **Off** | With it on the claim carries `/platform-admins`, with a leading slash. The cluster then creates a group literally named `/platform-admins`, your `ClusterRoleBinding` names `platform-admins`, and nothing matches. This is the trap. |
+| Add to ID token | On | |
+| Add to access token | On | |
+| Add to userinfo | On | |
+
+Prove it from the IdP side before chapter 7 goes anywhere near the
+cluster, by fetching a token for a real member of the admin group and
+reading the claim out of it:
+
+```sh
+# ===== RUN ON: THE IDP HOST =====
+curl -s -X POST \
+  "https://idp.example.mil/realms/<realm>/protocol/openid-connect/token" \
+  -d grant_type=password \
+  -d client_id=<client-id> \
+  -d client_secret=<client-secret> \
+  -d username=<a-real-member> \
+  -d password=<their-password> \
+  -d scope=openid |
+  python3 -Ic 'import sys,json,base64
+t=json.load(sys.stdin)["id_token"].split(".")[1]
+print(json.dumps(json.loads(base64.urlsafe_b64decode(t+"==")),indent=2))'
+```
+
+The payload must contain `"groups": ["platform-admins", ...]` — a flat
+list, no leading slashes, and the admin group present. Record this
+output; chapter 12 wants evidence that group mapping was proven before
+`kubeadmin` was deleted.
+
+**What it looks like when the mapper is missing** is the reason to check
+here rather than later: authentication *succeeds*. The user logs in,
+`oc whoami` returns their name, and they can do nothing. `oc get groups`
+is empty, the authentication operator is `Available=True`, and nothing
+in any log says "no groups claim", because from the cluster's point of
+view nothing failed. It reads as an RBAC problem and gets debugged as
+one, for about a day.
 
 📌 **Handoff** The group bound to `cluster-admin` must exist and be
 populated **before** chapter 7 deletes `kubeadmin`. The order is not

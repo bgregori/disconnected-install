@@ -47,11 +47,46 @@ oc whoami            # system:admin
 
 ## Watching the bootstrap
 
-> **TODO:** needs validation on real hardware — the agent-based
-> installer's wait/monitor commands, what their normal output looks like,
-> and roughly how long each phase takes on this hardware. Record the
-> timings: the most common operational error at this stage is deciding
-> something has hung when it has not, and intervening.
+> 🚧 **DRAFT -- NOT VALIDATED.** Written from documentation, not executed
+> against a cluster. Verify before running. Replace this block with the
+> command as run, then update VALIDATION.md.
+>
+> **No timings are given, deliberately** — see
+> [04](04-agent-iso.md#booting). The most common operational error at
+> this stage is deciding something has hung when it has not, and
+> intervening; a made-up number in this repository would cause exactly
+> that. Record the real ones on the first install.
+
+Two commands, in order, and the second is not optional:
+
+```sh
+# ===== RUN ON: THE INSTALL HOST =====
+: "${OCP_INSTALL_ROOT:?set it first -- see 01-intake.md}"
+openshift-install-fips agent wait-for bootstrap-complete \
+  --dir ${OCP_INSTALL_ROOT}/cluster --log-level=info
+```
+
+`bootstrap-complete` returns when the API server is up on the control
+plane. That is not an installed cluster — it is the point at which the
+rendezvous host stops being special and the install continues without
+it.
+
+```sh
+# ===== RUN ON: THE INSTALL HOST =====
+: "${OCP_INSTALL_ROOT:?set it first -- see 01-intake.md}"
+openshift-install-fips agent wait-for install-complete \
+  --dir ${OCP_INSTALL_ROOT}/cluster --log-level=info
+```
+
+`install-complete` is the one that means what you want it to mean. Both
+read state from the install directory, so `--dir` must point at the
+directory the ISO was generated from — a fresh or re-created directory
+makes them fail in ways that look like cluster problems.
+
+If either exits non-zero, go back to
+[04 — watching it](04-agent-iso.md#watching-it) for the rendezvous-host
+logs. The wait commands report that something did not happen; they do
+not report why.
 
 What to look at once the API answers:
 
@@ -99,13 +134,53 @@ pulling comes from the mirror. Doing this now, rather than in
 `imageDigestSources` while the cluster is still empty and reinstalling is
 cheap.
 
-> **TODO:** needs validation on real hardware — the check that proves
-> every running image reference resolves to the mirror. The shape is
-> clear (enumerate the images actually in use, confirm each resolves
-> through IDMS to the mirror registry) but the command that does it
-> accurately has not been run, and a check that reports success wrongly
-> is worse than no check. Write it only once it has caught a real
-> failure.
+> 🚧 **DRAFT -- NOT VALIDATED.** Written from documentation, not executed
+> against a cluster. Verify before running. Replace this block with the
+> command as run, then update VALIDATION.md.
+>
+> **A check that reports success wrongly is worse than no check**, and
+> this one has a specific way of doing that, described below. The query
+> below has not been run and has not caught a real failure. Until it
+> has, treat a clean result as weak evidence and the `crictl` check
+> further down as the stronger one.
+
+The trap first, because it inverts the obvious command. A pod's
+`spec.containers[].image` is the reference the workload *asked for*,
+and on a correctly mirrored cluster it still says `quay.io`. IDMS
+rewriting happens in CRI-O at pull time, below the API. So the field
+everybody greps is the field that proves nothing in either direction.
+
+`status.containerStatuses[].imageID` is what was actually pulled:
+
+```sh
+# ===== RUN ON: THE CLUSTER =====
+oc get pods -A -o jsonpath='{range .items[*]}{range .status.containerStatuses[*]}{.imageID}{"\n"}{end}{end}' |
+  sed 's#@sha256:.*##' | sort -u
+```
+
+Every line should name the mirror registry. A line naming `quay.io` or
+`registry.redhat.io` is one of two things, and they are different
+problems:
+
+- **A pull that succeeded from the internet.** The airgap is not what
+  you think it is. This is a finding in its own right, independent of
+  the install.
+- **A reference that was never pulled on this cluster**, carried in
+  some other way. Chase it; do not assume the first explanation.
+
+Confirm the mirror configuration actually landed, too, since an empty
+one produces no errors at all on a cluster whose images are already
+cached:
+
+```sh
+# ===== RUN ON: THE CLUSTER =====
+oc get imagedigestmirrorset -o yaml | grep -c 'mirrors:'
+```
+
+That count must match the one chapter 2 took from prep's IDMS. A
+mismatch means `imageDigestSources` was incomplete, and the platform
+images will pull while the operator images will not — a failure that
+waits until chapter 9.
 
 The weaker check that is available immediately, and is worth doing
 anyway:
@@ -129,14 +204,43 @@ for them. Chapter 1's mirror gate should have confirmed it. If they are
 absent, you have no diagnostic collection in an environment where you
 most need it, and obtaining them is a transfer window.
 
-> **TODO:** needs validation on real hardware — the `oc adm must-gather`
-> invocation against a mirrored image. The default pulls from
-> `registry.redhat.io`, so the disconnected form requires `--image` with
-> the mirrored reference; the exact reference depends on how prep's
-> mirror laid the image out, and prep established that mirrored images
-> are digest-referenced rather than tagged. Confirm the working form and
-> record it here, because the moment you need this command is the worst
-> moment to work it out.
+> 🚧 **DRAFT -- NOT VALIDATED.** Written from documentation, not executed
+> against a cluster. Verify before running. Replace this block with the
+> command as run, then update VALIDATION.md.
+>
+> **Run this once while nothing is wrong.** The moment you need
+> `must-gather` is the worst possible moment to discover the invocation
+> is different from the one written here. What is uncertain is whether
+> `--image-for` resolves through IDMS the way the form below assumes,
+> and whether the mirrored image is reachable by the digest the release
+> payload names.
+
+The default invocation pulls from `registry.redhat.io` and hangs. The
+disconnected form has to name the image, and because mirrored images
+are digest-referenced rather than tagged, the reference cannot be typed
+from memory. Ask the release payload for it:
+
+```sh
+# ===== RUN ON: THE CLUSTER =====
+oc adm release info --image-for=must-gather
+```
+
+That returns a digest reference, which IDMS then redirects to the
+mirror. Feed it straight back in:
+
+```sh
+# ===== RUN ON: THE CLUSTER =====
+oc adm must-gather --image="$(oc adm release info --image-for=must-gather)" \
+  --dest-dir=./must-gather.local
+```
+
+If `release info` itself cannot reach the payload, you have a pull-path
+problem rather than a `must-gather` problem — go back to the section
+above.
+
+`support-tools` is a separate image and is only present if prep
+mirrored it. Chapter 1's mirror gate should have confirmed that. If it
+is absent, obtaining it is a transfer window, not a command.
 
 ---
 

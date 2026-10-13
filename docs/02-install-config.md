@@ -20,16 +20,31 @@ it. Every `--dir` argument from here on points there.
 > installer consumes and rewrites; a copy kept inside it is a copy you
 > will lose.
 >
+> Create the directory now:
+>
 > ```sh
 > # ===== RUN ON: THE INSTALL HOST =====
 > : "${OCP_INSTALL_ROOT:?set it first -- see 01-intake.md}"
 > mkdir -p ${OCP_INSTALL_ROOT}/cluster
+> ```
+>
+> Then, **once you have finished authoring the file** — which is the end
+> of this chapter, not the start — take the copy:
+>
+> ```sh
+> # ===== RUN ON: THE INSTALL HOST =====
+> : "${OCP_INSTALL_ROOT:?set it first -- see 01-intake.md}"
 > cp ${OCP_INSTALL_ROOT}/cluster/install-config.yaml \
 >    ${OCP_INSTALL_ROOT}/install-config.yaml.bak
 > chmod 600 ${OCP_INSTALL_ROOT}/install-config.yaml.bak
 > ```
 >
 > It is `0600` because the file contains the mirror pull secret.
+>
+> The two halves are separate because the file does not exist yet. Run
+> them in one go on a fresh install root and the `cp` fails on a missing
+> source — and because `cp`'s failure is not fatal to the shell, the
+> `chmod` then fails too and you carry on believing you have a backup.
 
 ---
 
@@ -109,34 +124,130 @@ treat as problems:
 
 Replica counts are install-time and define the cluster's shape.
 
-> **TODO:** needs validation on real hardware — the `controlPlane` and
-> `compute` stanzas for each supported topology, and which `platform:`
-> stanza the agent-based installer requires alongside them. The values
-> differ between single node, three-node compact and multi-node in more
-> than just the replica count, and a three-node compact cluster that is
-> configured as "3 control plane, 0 compute" behaves differently from one
-> configured as "3 control plane, 3 compute on the same machines". Write
-> this only once each has been installed.
+> 🚧 **DRAFT -- NOT VALIDATED.** Written from documentation, not executed
+> against a cluster. Verify before running. Replace this block with the
+> command as run, then update VALIDATION.md.
 >
-> Topology-specific notes live in [topologies/sno.md](topologies/sno.md)
-> and [topologies/compact.md](topologies/compact.md); both are currently
-> deltas-to-be-written against this section.
+> The replica counts below are documented and uncontroversial. The
+> `platform:` pairing is the part to check: single node is documented as
+> requiring `platform: none`, and a three-node compact cluster that wants
+> managed VIPs needs `platform: baremetal`, but *which* of those your
+> site's load balancing actually wants is a decision nobody here has
+> made against real network equipment. The difference is not cosmetic —
+> `platform: none` means you supply the load balancer and the VIPs are
+> never mentioned in this file at all.
+
+| Topology | `controlPlane.replicas` | `compute.replicas` | `platform:` |
+|---|---|---|---|
+| Single node | 1 | 0 | `none: {}` |
+| Three-node compact | 3 | 0 | `baremetal` with VIPs, or `none` with an external LB |
+| Multi-node | 3 | 2 or more | `baremetal` with VIPs, or `none` with an external LB |
+
+```yaml
+# ===== EDIT IN: ${OCP_INSTALL_ROOT}/cluster/install-config.yaml =====
+controlPlane:
+  name: master
+  replicas: 3
+  architecture: amd64
+  hyperthreading: Enabled
+compute:
+- name: worker
+  replicas: 0
+  architecture: amd64
+  hyperthreading: Enabled
+platform:
+  baremetal:
+    apiVIPs:
+    - 10.20.30.5
+    ingressVIPs:
+    - 10.20.30.6
+```
+
+`compute.replicas: 0` is what makes a three-node cluster *compact* —
+the control plane nodes become schedulable and carry workloads. It is
+not the same cluster as "3 control plane, 3 compute on the same
+machines", which is not a thing the installer builds. The `compute`
+stanza must still be present with `replicas: 0`; deleting it is not the
+same as zeroing it.
+
+`apiVIPs` and `ingressVIPs` are **lists** (plural, since 4.12). The
+singular `apiVIP`/`ingressVIP` forms still parse in some versions and
+are the kind of thing a copied example carries in silently.
+
+> ⚠️ **STIG** `architecture: amd64` is stated explicitly rather than
+> left to default, because the evidence pack has to say what was built
+> and "whatever the installer chose" is not an answer. Prep mirrored
+> `amd64` only; another value here means content that is not in the
+> registry.
+
+Topology-specific notes live in [topologies/sno.md](topologies/sno.md)
+and [topologies/compact.md](topologies/compact.md). Both now carry
+drafted `install-config.yaml` stanzas of their own, written independently
+of this section — so where they disagree with it, that disagreement is
+unresolved rather than deliberate. Read the topology page alongside this
+one and reconcile the two before you commit to either.
 
 ---
 
 ## Networking
 
-> **TODO:** needs validation on real hardware — the `networking` stanza:
-> `machineNetwork`, `clusterNetwork`, `serviceNetwork`, `networkType`, and
-> where the API and ingress VIPs are declared for an agent-based install
-> on bare metal. Chapter 1 verified that the VIPs are unused; this section
-> must say where they go and what the installer does when they overlap the
-> machine network badly.
+> 🚧 **DRAFT -- NOT VALIDATED.** Written from documentation, not executed
+> against a cluster. Verify before running. Replace this block with the
+> command as run, then update VALIDATION.md.
 >
-> State the failure mode for each: a `serviceNetwork` that collides with
-> something already routed on the enclave is not detected at install and
-> presents months later as one specific service being unreachable from one
-> specific subnet.
+> The field names and defaults below are documented. The CIDRs are
+> **examples and must not be copied** — they are the installer defaults,
+> which is exactly why they collide with things. What has not been
+> observed here is what the installer reports when the VIPs sit outside
+> `machineNetwork`, or when `clusterNetwork` overlaps it; the claim below
+> that the first is caught and the second is not is reasoned, not seen.
+
+```yaml
+# ===== EDIT IN: ${OCP_INSTALL_ROOT}/cluster/install-config.yaml =====
+networking:
+  networkType: OVNKubernetes
+  machineNetwork:
+  - cidr: 10.20.30.0/24
+  clusterNetwork:
+  - cidr: 10.128.0.0/14
+    hostPrefix: 23
+  serviceNetwork:
+  - 172.30.0.0/16
+```
+
+Four things, each with a different failure:
+
+- **`networkType: OVNKubernetes`.** The only supported value on 4.21.
+  State it rather than defaulting it, because the evidence pack has to
+  name the CNI.
+- **`machineNetwork` must contain every node address and both VIPs.**
+  The VIPs are declared in the `platform:` stanza above, not here, and
+  the two have to agree. A VIP outside `machineNetwork` is the one error
+  in this section expected to be caught at install.
+- **`clusterNetwork` is the pod network, and `hostPrefix` carves it per
+  node.** `/23` is 510 usable pod addresses per node. A `/14` with
+  `hostPrefix: 23` gives you 512 nodes' worth. Raising `hostPrefix`
+  later is not a thing.
+- **`serviceNetwork` is the one that bites quietly.** It is never
+  routed, never ARPs, and never announces itself, so a collision with
+  something already routed in the enclave is invisible at install. It
+  presents months later as one specific service unreachable from one
+  specific subnet, and by then the cluster cannot be changed.
+
+Check both the pod and service ranges against the enclave's address
+plan — including ranges that exist only in a disaster-recovery site —
+before anyone types them.
+
+```sh
+# ===== RUN ON: A NODE =====
+ip route get 172.30.0.1    # must be unreachable / no route
+ip route get 10.128.0.1    # must be unreachable / no route
+```
+
+A route that resolves to a real next hop means the range is in use.
+This check cannot be run from the install host: the question is what a
+node's routing table says, and the install host's says nothing about
+it.
 
 What is worth deciding before anyone writes YAML, because it needs the
 network team:
@@ -203,14 +314,51 @@ matters.
 
 ## Validate before you consume it
 
-> **TODO:** needs validation on real hardware — whether
-> `openshift-install-fips agent create ...` performs a schema validation
-> pass that can be run non-destructively, and if so how. The question that
-> matters is whether there is any way to check this file *without*
-> consuming it, since the consuming command deletes it.
+> 🚧 **DRAFT -- NOT VALIDATED.** Written from documentation, not executed
+> against a cluster. Verify before running. Replace this block with the
+> command as run, then update VALIDATION.md.
 >
-> Until that is answered, the procedure is: keep the `.bak` copy made at
-> the top of this chapter, and check by eye against the list below.
+> There is no non-destructive validation subcommand. What there appears
+> to be is a *cheaper* destructive one — `agent create
+> cluster-manifests` validates and consumes, but consumes a throwaway
+> copy if you give it one. Whether its validation covers everything
+> `agent create image` checks has not been established, so a clean run
+> here is evidence of nothing worse than a schema error.
+
+Validate against a scratch copy of the directory, never the real one.
+Both files have to exist first — `agent-config.yaml` is the next
+section, so this is the last thing in the chapter you run, not the
+next one:
+
+```sh
+# ===== RUN ON: THE INSTALL HOST =====
+: "${OCP_INSTALL_ROOT:?set it first -- see 01-intake.md}"
+rm -rf ${OCP_INSTALL_ROOT}/validate
+mkdir -p ${OCP_INSTALL_ROOT}/validate
+cp ${OCP_INSTALL_ROOT}/cluster/install-config.yaml \
+   ${OCP_INSTALL_ROOT}/cluster/agent-config.yaml \
+   ${OCP_INSTALL_ROOT}/validate/
+
+openshift-install-fips agent create cluster-manifests \
+  --dir ${OCP_INSTALL_ROOT}/validate --log-level=info
+```
+
+The scratch directory is now burnt — both input files are gone from it.
+That is the point: it absorbed the destruction instead of
+`${OCP_INSTALL_ROOT}/cluster`. Read what it produced, then delete it:
+
+```sh
+# ===== RUN ON: THE INSTALL HOST =====
+: "${OCP_INSTALL_ROOT:?set it first -- see 01-intake.md}"
+ls -l ${OCP_INSTALL_ROOT}/validate/cluster-manifests/
+rm -rf ${OCP_INSTALL_ROOT}/validate
+```
+
+`openshift-install-fips explain installconfig.<field>` answers schema
+questions without touching anything, and is the right tool for "does
+this field still exist in 4.21".
+
+The checklist below is not replaced by any of this. Run it every time.
 
 By eye, every time:
 
@@ -237,10 +385,95 @@ disconnected or hardened — but it is required, and it is where static
 addressing and the `rootDeviceHints` that stop RHCOS installing to the
 wrong disk are declared.
 
-> **TODO:** needs validation on real hardware — the `agent-config.yaml`
-> fields this build actually needs, in particular `rootDeviceHints` on
-> multi-disk nodes and the NMState `networkConfig` form for static
-> addressing. See [04-agent-iso.md](04-agent-iso.md).
+> 🚧 **DRAFT -- NOT VALIDATED.** Written from documentation, not executed
+> against a cluster. Verify before running. Replace this block with the
+> command as run, then update VALIDATION.md.
+>
+> The schema below is documented; the values are not yours. The two
+> fields worth real suspicion are `rootDeviceHints` on multi-disk nodes
+> — because `deviceName` is the hint most likely to be wrong and the
+> only one whose being wrong destroys data — and the NMState block,
+> which is accepted or rejected wholesale with error messages that name
+> the NMState schema rather than the field you mistyped.
+
+```yaml
+# ===== EDIT IN: ${OCP_INSTALL_ROOT}/cluster/agent-config.yaml =====
+apiVersion: v1beta1
+kind: AgentConfig
+metadata:
+  name: <cluster-name>        # must equal install-config metadata.name
+rendezvousIP: 10.20.30.11
+additionalNTPSources:
+- 10.20.30.2                  # the enclave source, never a public pool
+hosts:
+- hostname: master-0
+  role: master
+  interfaces:
+  - name: eno1
+    macAddress: 00:11:22:33:44:55
+  rootDeviceHints:
+    wwn: "0x60014051..."
+  networkConfig:
+    interfaces:
+    - name: eno1
+      type: ethernet
+      state: up
+      mac-address: 00:11:22:33:44:55
+      ipv4:
+        enabled: true
+        dhcp: false
+        address:
+        - ip: 10.20.30.11
+          prefix-length: 24
+      ipv6:
+        enabled: false
+    dns-resolver:
+      config:
+        server:
+        - 10.20.30.3
+    routes:
+      config:
+      - destination: 0.0.0.0/0
+        next-hop-address: 10.20.30.1
+        next-hop-interface: eno1
+        table-id: 254
+```
+
+What each of these is actually protecting you from:
+
+- **`metadata.name` must equal the cluster name in
+  `install-config.yaml`.** A mismatch is not a naming inconvenience; the
+  two files stop describing the same cluster.
+- **`rendezvousIP` must be a control plane node's address.** It picks
+  which node runs the assisted service and bootstraps. Pointing it at a
+  worker is a configuration the installer rejects, and pointing it at
+  an address nothing will ever hold is a boot that hangs with every
+  node waiting for a host that never appears.
+- **`macAddress` is the join key.** Every node boots the *same* ISO and
+  identifies itself by MAC. A typo does not fail — that node simply
+  gets no configuration and falls back to DHCP, which on a statically
+  addressed enclave means no address at all.
+- **`rootDeviceHints` on a multi-disk node.** Prefer `wwn` over
+  `deviceName`: `/dev/sda` is not stable across boots or across
+  identical chassis, and the cost of the installer picking the wrong
+  disk is that it wipes it. Get the `wwn` from `udevadm info` on the
+  host; if it reports `ID_WWN_WITH_EXTENSION`, that is the value to
+  use.
+- **`additionalNTPSources`.** Chapter 1 recorded the enclave NTP
+  addresses for this. It covers the nodes during discovery and
+  bootstrap; chapter 3's chrony MachineConfig covers them afterwards.
+  Both are needed and neither substitutes for the other.
+
+```sh
+# ===== RUN ON: A NODE =====
+udevadm info --query=property --name=/dev/sda | grep -E '^ID_WWN'
+lsblk -o NAME,SIZE,WWN,MODEL,SERIAL
+```
+
+Run this on the machine that will become the node, not on the install
+host. Disk ordering is per-chassis and the install host's is irrelevant.
+
+See [04-agent-iso.md](04-agent-iso.md) for what consumes this file.
 
 ---
 

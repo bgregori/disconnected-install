@@ -31,17 +31,6 @@ is a day of reading, not an hour.
 
 ## The default: review, then apply
 
-> **TODO:** needs validation on real hardware — the procedure for
-> inspecting an individual `ComplianceRemediation` object to see exactly
-> what it will change before applying it, and the mechanism by which a
-> reviewed remediation is marked for application. Both have to be exact;
-> this is the chapter where a half-remembered command does real damage.
->
-> Establish: how a remediation's payload is read, how one is applied
-> individually, how one is declined in a way that is visible later, and
-> whether declining is a cluster-side state or something you track
-> yourself in the exceptions register.
-
 The review itself, whatever the mechanism:
 
 ```sh
@@ -58,10 +47,108 @@ For each one, three questions and a written answer:
 - **Does anything here depend on the current behaviour?** This is the
   question only your team can answer, and the one the benchmark cannot.
 
+### Reading the payload
+
+> 🚧 **DRAFT -- NOT VALIDATED.** Written from documentation, not executed
+> against a cluster. Verify before running. Replace this block with the
+> command as run, then update VALIDATION.md.
+>
+> The payload is believed to live at `spec.current.object` — a complete
+> Kubernetes object the operator will create. Sources disagree on
+> whether the path is `spec.current.object` or `spec.object.current`, so
+> **start with the full `-o yaml` below and read where it actually is**
+> before using the `jsonpath` form in a loop. A `jsonpath` that misses
+> prints nothing and errors nothing, which in this chapter means
+> reviewing a remediation by looking at a blank line.
+
+```sh
+# ===== RUN ON: THE CLUSTER =====
+oc get complianceremediation/<name> -n openshift-compliance -o yaml
+
+# once the path is confirmed, the payload alone:
+oc get complianceremediation/<name> -n openshift-compliance \
+  -o jsonpath='{.spec.current.object}'
+```
+
+What you are looking for, in this order:
+
+- **`kind`.** `MachineConfig` or `KubeletConfig` means a node change and
+  therefore a reboot. Anything else is usually a cluster resource and
+  usually is not.
+- **The actual content.** For a `MachineConfig` this is Ignition, and
+  the interesting part is frequently a base64 or URL-encoded file body
+  that you have to decode to read. Decode it. "It sets a sysctl" is not
+  a review.
+- **`spec.outdated`**, if present. It holds the payload parsed from an
+  earlier content version, retained so you can see what changed when the
+  operator was updated. If it is populated, the remediation is not what
+  it was at baseline and you are reviewing a moving target — resolve
+  that first.
+
+### Applying one
+
+> 🚧 **DRAFT -- NOT VALIDATED.** Written from documentation, not executed
+> against a cluster. Verify before running. Replace this block with the
+> command as run, then update VALIDATION.md.
+>
+> Applying is believed to be a single boolean on the object:
+> `spec.apply: true`. The operator watches it and creates the payload.
+> This is the chapter where a half-remembered command does real damage,
+> so confirm the field name on one low-risk remediation and watch what
+> happens before you batch anything.
+
+```sh
+# ===== RUN ON: THE CLUSTER =====
+oc patch complianceremediation/<name> -n openshift-compliance \
+  --type=merge -p '{"spec":{"apply":true}}'
+
+oc get complianceremediation/<name> -n openshift-compliance \
+  -o custom-columns=NAME:.metadata.name,STATE:.status.applicationState
+```
+
+`status.applicationState` is believed to take the values `NotApplied`,
+`Pending`, `Applied`, `Outdated`, `Error`, `MissingDependencies` and
+`NeedsReview`. Only the first two and `Applied` are normal; the rest are
+discussed below.
+
+> ⚠️ **Set `apply: true` on a batch, not one at a time** — see the reboot
+> economics below. The per-remediation command above is for the first
+> one, where you are confirming the mechanism, not for the other sixty.
+
+### Declining one
+
+> 🚧 **DRAFT -- NOT VALIDATED.** Written from documentation, not executed
+> against a cluster. Verify before running. Replace this block with the
+> command as run, then update VALIDATION.md.
+>
+> The belief here is a negative one and it is the important part of this
+> section: **there appears to be no cluster-side "declined" state.** A
+> remediation you reviewed and rejected sits at `apply: false` /
+> `NotApplied`, which is byte-for-byte what a remediation nobody has
+> looked at yet looks like. If the operator does carry a decline
+> mechanism at your version, find it and use it; if it does not, the
+> consequence below holds.
+
+**The decline record lives outside the cluster, or it does not exist.**
 Anything you decline goes in the **exceptions register** immediately,
 with a reason, while you still remember it. See
 [12-evidence-pack.md](12-evidence-pack.md). A remediation declined in
-March and explained in June is explained badly.
+March and explained in June is explained badly — and with no cluster-side
+state to jog anyone's memory, "declined" and "missed" are the same object
+six months later.
+
+A cheap local convention, if you want a marker on the cluster as well as
+in the register:
+
+```sh
+# ===== RUN ON: THE CLUSTER =====
+oc annotate complianceremediation/<name> -n openshift-compliance \
+  review.local/decision='declined 2026-10-12 <name> -- see exceptions register'
+```
+
+That annotation is yours, not the operator's. It will not survive the
+object being recreated by a re-scan, so it supplements the register and
+never replaces it.
 
 ---
 
@@ -104,10 +191,71 @@ oc get machineconfigpool -w        # watch a rollout to completion
 oc get nodes
 ```
 
-> **TODO:** needs validation on real hardware — measured per-node drain
-> and reboot time on this hardware, and the total for a representative
-> remediation batch. Replace the hand-waving above with numbers once you
-> have them; a measured figure is what makes a change request credible.
+### Batching: pause the pool
+
+> 🚧 **DRAFT -- NOT VALIDATED.** Written from documentation, not executed
+> against a cluster. Verify before running. Replace this block with the
+> command as run, then update VALIDATION.md.
+>
+> The mechanism for "apply a set, take one rollout" is believed to be
+> pausing the `MachineConfigPool` first, so the Machine Config Operator
+> accumulates the changes instead of acting on each. Uncertain: whether
+> the Compliance Operator pauses the pool itself when several
+> remediations land together, which would make this redundant rather
+> than wrong. Check `spec.paused` after your first batch.
+
+```sh
+# ===== RUN ON: THE CLUSTER =====
+oc patch machineconfigpool/master --type=merge -p '{"spec":{"paused":true}}'
+oc patch machineconfigpool/worker --type=merge -p '{"spec":{"paused":true}}'
+
+# ... set apply: true on the reviewed set ...
+
+oc get machineconfig | grep -i compliance     # the rendered remediations
+oc patch machineconfigpool/worker --type=merge -p '{"spec":{"paused":false}}'
+oc get machineconfigpool -w
+```
+
+> ⚠️ **A paused pool is a pool that is not getting security updates
+> either.** Unpause it in the same change window you paused it in. A pool
+> left paused is invisible — nothing is degraded, nothing alerts, and
+> the next three months of `MachineConfig` changes quietly do not apply.
+> Unpause one pool at a time and let it finish before the next.
+
+The applied node remediations are believed to be rendered into a single
+`MachineConfig` per scan, named on the pattern
+`75-<scan-name>-<suite-name>`. If that object exists and the pool has
+rolled, the change is on the nodes; if the pool reports `UPDATED=True`
+but the object is absent, nothing was applied and the scan will say so.
+
+### Measuring the cost
+
+> 🚧 **DRAFT -- NOT VALIDATED.** Written from documentation, not executed
+> against a cluster. Verify before running. Replace this block with the
+> command as run, then update VALIDATION.md.
+>
+> **There are no measured numbers in this repository yet**, and the
+> hand-waving above stays hand-waving until there are. This is the
+> procedure for getting them, not the answer. A measured figure is what
+> makes a change request credible; "a few reboots" is what makes a
+> two-hour window a six-hour one.
+
+```sh
+# ===== RUN ON: THE CLUSTER =====
+date -u +%FT%TZ                               # start of the rollout
+oc get machineconfigpool -w | tee /tmp/mcp-rollout.log
+date -u +%FT%TZ                               # pool reports UPDATED=True
+
+# per-node detail, after the fact
+oc get nodes -o custom-columns=\
+NAME:.metadata.name,READY:.status.conditions[-1].type,\
+CONFIG:.metadata.annotations.machineconfiguration\.openshift\.io/currentConfig
+```
+
+Record three numbers and put them in the evidence pack: per-node drain +
+reboot + rejoin, nodes per pool, and the total for the batch. They are
+the input to every subsequent change request, including
+[chapter 13's](13-day2.md) upgrades.
 
 ---
 
@@ -126,11 +274,47 @@ It is the wrong choice on a first run against a cluster anyone depends
 on, for the reason at the top of this chapter: it reboots nodes in waves
 before anybody has read what it is about to change.
 
-> **TODO:** needs validation on real hardware — the auto-applying scan
-> setting's exact name and the binding that selects it, and what the
-> rollout pattern looks like in practice. Getting the scan setting names
-> the wrong way round is the specific accident this repository is trying
-> to prevent, so these must be confirmed rather than recalled.
+> 🚧 **DRAFT -- NOT VALIDATED.** Written from documentation, not executed
+> against a cluster. Verify before running. Replace this block with the
+> command as run, then update VALIDATION.md.
+>
+> The auto-applying setting is believed to be named `default-auto-apply`,
+> identical to `default` except that `autoApplyRemediations` and
+> `autoUpdateRemediations` are both `true`. **Getting the two names the
+> wrong way round is the specific accident this repository exists to
+> prevent**, so do not take the name from this page. Read the booleans
+> off the cluster, as
+> [chapter 9](09-compliance-operator.md#the-two-profiles) does, and
+> decide from those.
+
+```sh
+# ===== RUN ON: THE CLUSTER =====
+for s in $(oc get scansetting -n openshift-compliance -o name); do
+  echo "== $s"
+  oc get $s -n openshift-compliance \
+    -o jsonpath='{.autoApplyRemediations}{" / "}{.autoUpdateRemediations}{"\n"}'
+done
+```
+
+Switching an existing binding over, rather than creating a second one —
+two bindings against the same profiles is a way to get two suites
+fighting over the same remediations:
+
+```sh
+# ===== RUN ON: THE CLUSTER =====
+oc patch scansettingbinding/stig-baseline -n openshift-compliance \
+  --type=merge -p '{"settingsRef":{"name":"default-auto-apply"}}'
+```
+
+The rollout pattern, as documented and not as seen: when the scan
+reaches `DONE`, the suite controller pauses the machine config pool the
+scan maps to, sets `apply: true` on every remediation at once, then
+unpauses — one rollout, not one per remediation. `autoUpdateRemediations`
+then does the same thing again, unprompted, whenever the content image
+changes. **That second boolean is the one to think hardest about:** it
+means a Compliance Operator update can reboot your nodes with no change
+request, which is exactly the behaviour chapter 9 warns about under
+content versions.
 
 > ⚠️ Prep warns the install side about this at handoff — "compliance
 > auto-remediation reboots nodes; recommend scan-only before
@@ -143,17 +327,100 @@ Some remediations cannot take effect until something else has, and the
 scanner will report them as still failing after the first apply. That is
 expected rather than a sign the remediation did not work.
 
-> **TODO:** needs validation on real hardware — which remediations in
-> `ocp4-stig` and `rhcos4-stig` have dependencies of this kind, and
-> whether the operator surfaces that explicitly. Until this is known,
-> treat a persistent failure after a successful apply as "investigate"
-> rather than "broken".
+> 🚧 **DRAFT -- NOT VALIDATED.** Written from documentation, not executed
+> against a cluster. Verify before running. Replace this block with the
+> command as run, then update VALIDATION.md.
+>
+> The operator is believed to surface this explicitly, through two
+> `applicationState` values rather than silence. **Which** remediations
+> in `ocp4-stig` and `rhcos4-stig` land in those states is unknown and
+> is revision-specific — enumerate it from your own first pass rather
+> than from a list. Until confirmed, treat a persistent failure after a
+> successful apply as "investigate" rather than "broken".
+
+```sh
+# ===== RUN ON: THE CLUSTER =====
+oc get complianceremediation -n openshift-compliance \
+  -o custom-columns=NAME:.metadata.name,STATE:.status.applicationState \
+  | grep -E 'MissingDependencies|NeedsReview|Error|Outdated'
+```
+
+| State | Believed to mean | What you do |
+|---|---|---|
+| `MissingDependencies` | another check must pass first | apply the prerequisite, re-scan, then apply this one |
+| `NeedsReview` | the remediation needs a tailoring variable you have not set | set the variable in a `TailoredProfile`; **the pool stays paused until you do** |
+| `Outdated` | the content changed and the payload with it | read `spec.outdated` against `spec.current` before applying |
+| `Error` | the operator could not create the payload | read the object's conditions; this is not a dependency problem |
+
+`NeedsReview` is the one with a nasty second-order effect: while any
+remediation is in that state the machine config pool is held paused, by
+design, so the fix is not disruptive. That is correct behaviour and it
+looks exactly like [the stuck-paused-pool failure](#batching-pause-the-pool)
+above. Check `spec.paused` and `applicationState` together before
+concluding anything about a pool that will not roll.
+
+So the second pass is a loop, not a step: **apply → re-scan → look again
+at what is still failing → apply.** Expect at least two rounds. Budget
+the reboots for both.
 
 ---
 
 ## Re-scan and delta
 
 The point of the baseline.
+
+### Before you re-scan
+
+**A re-scan reuses the same result object names.** `ComplianceCheckResult`
+names are derived from the scan name and the rule, so the second run
+overwrites the first in place — there is no second generation of objects
+to diff against. That is fine for the procedure below, because the
+`diff` compares two **files you already wrote**, not two sets of live
+objects. It is fatal if you skipped chapter 9's capture step, or captured
+the baseline and left it on the cluster: in that case the baseline no
+longer exists anywhere and cannot be reconstructed.
+
+> ⚠️ **Confirm the baseline capture exists and is non-empty before
+> triggering the re-scan.** This is the one irreversible step in the
+> chapter. Everything else can be re-run.
+
+```sh
+# ===== RUN ON: THE CLUSTER =====
+: "${OCP_INSTALL_ROOT:?set it first -- see 01-intake.md}"
+ls -l ${OCP_INSTALL_ROOT}/evidence/*-baseline/checkresults.yaml
+```
+
+Empty, missing, or zero bytes means stop and go back to
+[chapter 9](09-compliance-operator.md#capturing-the-baseline). And the
+copy off the cluster-adjacent host that chapter 9 asked for is doing its
+real work here — the on-cluster objects are about to be destroyed.
+
+### Triggering the re-scan
+
+> 🚧 **DRAFT -- NOT VALIDATED.** Written from documentation, not executed
+> against a cluster. Verify before running. Replace this block with the
+> command as run, then update VALIDATION.md.
+>
+> A re-scan is believed to be triggered by annotating each
+> `ComplianceScan` — not the binding, and not by deleting and recreating
+> anything. Deleting the binding would also delete the results, which is
+> the expensive way to learn this.
+
+```sh
+# ===== RUN ON: THE CLUSTER =====
+for s in $(oc get compliancescan -n openshift-compliance -o name); do
+  oc annotate --overwrite $s -n openshift-compliance \
+    compliance.openshift.io/rescan=
+done
+oc get compliancesuite -n openshift-compliance -w
+```
+
+The trailing `=` with nothing after it is deliberate: the annotation's
+presence is the signal and its value is ignored. The operator is
+believed to remove it once the re-scan starts, which is why `--overwrite`
+is harmless on a second run.
+
+### Capturing the after
 
 ```sh
 # ===== RUN ON: THE CLUSTER =====
@@ -190,11 +457,6 @@ Two counts and a diff. Read the diff in both directions:
 - **A check that disappeared entirely** usually means the content
   version changed under you. See
   [chapter 9 on content versions](09-compliance-operator.md#content-versions-move-independently-of-the-cluster).
-
-> **TODO:** needs validation on real hardware — how to trigger a re-scan
-> without recreating the binding, and whether a re-scan reuses the same
-> result object names (which would make the `diff` above compare the
-> wrong things). Confirm before trusting the delta.
 
 ---
 

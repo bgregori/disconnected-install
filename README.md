@@ -145,6 +145,7 @@ The labels used are:
 | `THE CLUSTER` | an authenticated `oc` session against the cluster API, from wherever you hold a kubeconfig |
 | `A NODE` | inside a node — a debug shell or the console. Checks that must *not* run on the install host, because the install host's view of DNS, routing and disks proves nothing about a node's. |
 | `THE IDP HOST` | the services host running Red Hat build of Keycloak, outside the cluster. No block uses it yet — the Keycloak-side configuration in [07](docs/07-identity.md) is unwritten — but the label is reserved so that when it is written, it cannot be mistaken for a cluster command. |
+| `ANYWHERE` | the repository's own tooling, which touches no infrastructure. Used by exactly one thing, [`scripts/check-docs.py`](scripts/README.md), and deliberately not available to a procedure — if a step genuinely runs anywhere, the question of where it runs has not been thought about yet. |
 
 Blocks that are file content rather than commands are marked `EDIT IN:`
 with the path:
@@ -216,6 +217,15 @@ than a footnote, because the failure this repository is built around is a
 reader with a printed copy who cannot tell a verified command from an
 invented one. A `DRAFT` block that reaches an evidence pack unchallenged
 is exactly the trap [VALIDATION.md](VALIDATION.md) describes.
+
+The count is checked rather than remembered.
+[`scripts/check-docs.py`](scripts/README.md) reconciles every marker in
+`docs/` against the table in `VALIDATION.md` and the headline above, and
+fails if they disagree — along with checking that every runnable block
+carries a host label and every cross-reference resolves. It runs on
+every push. A draft count that drifts **low** makes this repository look
+more validated than it is, and that is the one defect here a reader
+cannot catch.
 
 ## On STIG rule IDs
 

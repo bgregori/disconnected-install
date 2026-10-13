@@ -25,6 +25,7 @@ Odd-numbered scripts are optional.
 | Script | Chapter | Status |
 |---|---|---|
 | `00-preflight.sh` | [01 Intake](../docs/01-intake.md) | **written** — install-host checks only |
+| `check-docs.py` | — | **written** — unnumbered; see below |
 | `02-verify-environment.sh` | [01 Intake](../docs/01-intake.md) | not written — runs on a node, not here |
 | `04-mirror-gate.sh` | [01 Intake](../docs/01-intake.md) | not written |
 | `10-build-install-config.sh` | [02 install-config](../docs/02-install-config.md) | not written |
@@ -38,14 +39,46 @@ Odd-numbered scripts are optional.
 | `72-delta.sh` | [10 Remediation](../docs/10-remediation.md) | not written |
 | `90-evidence-pack.sh` | [12 Evidence pack](../docs/12-evidence-pack.md) | not written |
 
-Only `00-preflight.sh` exists. The rest are listed so the numbering is
-settled and so the gaps are visible, not because stubs are useful — an
-empty script that exits zero is a worse lie than a missing one.
+Only `00-preflight.sh` exists of the numbered set. The rest are listed
+so the numbering is settled and so the gaps are visible, not because
+stubs are useful — an empty script that exits zero is a worse lie than
+a missing one.
 
 They are unwritten for the reason the whole repository is a skeleton: a
 script that runs an unverified command is the same hazard as a doc that
 prints one, with less opportunity for the reader to notice. See
 [VALIDATION.md](../VALIDATION.md).
+
+## `check-docs.py` — the odd one out
+
+Unnumbered, because it is not part of the execution order and never
+runs on the install host. It checks the documentation against itself,
+on a laptop or in CI:
+
+```sh
+# ===== RUN ON: ANYWHERE =====
+./scripts/check-docs.py
+```
+
+- **drafts** — counts every 🚧 marker per chapter and reconciles it
+  against [VALIDATION.md](../VALIDATION.md)'s table and the headline
+  totals in that file and the top-level README
+- **hosts** — every `sh` / `bash` / `yaml` block opens with a
+  `RUN ON:` or `EDIT IN:` marker on its first line
+- **links** — every relative link resolves, file and heading anchor
+  both
+
+The first of those is the reason the script exists. The draft count is
+this repository's stated measure of its own progress and the thing a
+reader uses to tell a verified command from an invented one, and it is
+maintained by hand — it had already drifted by one within a single
+drafting pass. A count that drifts **low** is the one defect here that
+nobody downstream can detect, because it makes the repository look
+more validated than it is. That is not a thing to leave to whoever
+remembers.
+
+It runs on every push, with `shellcheck`, from
+`.github/workflows/check-docs.yml`.
 
 ## Two that will never be written
 

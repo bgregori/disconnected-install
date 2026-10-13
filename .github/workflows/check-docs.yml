@@ -1,0 +1,33 @@
+name: check-docs
+
+# The draft count is this repository's measure of its own honesty, and
+# it is maintained by hand. A count that drifts low is the one defect
+# here that a reader cannot detect, so it is checked on every push
+# rather than when somebody remembers.
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+
+jobs:
+  docs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Documentation consistency
+        run: ./scripts/check-docs.py
+
+  shell:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Syntax
+        run: for f in scripts/*.sh scripts/lib/*.sh; do bash -n "$f"; done
+
+      - name: shellcheck
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq shellcheck
+          shellcheck -x scripts/*.sh scripts/lib/*.sh

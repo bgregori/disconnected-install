@@ -12,6 +12,7 @@
 # network, and running them here would produce a pass that means nothing.
 # See docs/01-intake.md, "The environment, checked from where it matters".
 
+# shellcheck source=scripts/lib/common.sh
 source "$(dirname "$0")/lib/common.sh"
 load_env
 

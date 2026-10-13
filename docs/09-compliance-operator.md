@@ -258,21 +258,68 @@ attached cannot be reproduced or defended.
 
 ---
 
-## The two profiles
+## Three profiles, not two
 
 | Profile | Scans |
 |---|---|
 | `ocp4-stig` | the OpenShift platform — API server configuration, RBAC, operators, cluster resources |
-| `rhcos4-stig` | the RHCOS nodes themselves — file permissions, kernel parameters, services, the operating system underneath |
+| `ocp4-stig-node` | OpenShift's **node-level** configuration — kubelet, the container runtime, the parts of the platform that live on a node rather than in the API |
+| `rhcos4-stig` | the RHCOS operating system underneath — file permissions, kernel parameters, services |
 
-Both are needed. They check different things and a clean `ocp4-stig` says
-nothing about the nodes.
+All three are needed, and the middle row is the one that gets left out.
 
-They also behave differently in ways that matter operationally: the node
-profile's checks run on each node and its remediations are
-`MachineConfig` objects, which means **reboots**. The platform profile's
-remediations are mostly cluster resources, which mostly are not. That
-distinction drives everything in [chapter 10](10-remediation.md).
+Earlier drafts of this chapter listed two and flagged the third as
+uncertain. It is not uncertain. **`ocp4-stig` excludes every node-level
+rule by construction** — the profile carries a `filter_rules` expression
+that drops anything whose platform is `ocp4-node`, `ocp4-master-node`,
+`ocp4-node-on-sdn` or `ocp4-node-on-ovn`. Those rules are not failing
+and they are not `NOT-APPLICABLE`. They are **not evaluated**, and
+nothing in the result set says so. Bind two profiles and the scan comes
+back clean on a question it never asked.
+
+`ocp4-stig-node` is not a substitute for `rhcos4-stig` either. They
+cover different layers: one is OpenShift's configuration of the node,
+the other is the operating system. Both run per node.
+
+The profiles behave differently in ways that matter operationally: the
+two node profiles' checks run on each node and their remediations are
+`MachineConfig` objects, which means **reboots**. The platform
+profile's remediations are mostly cluster resources, which mostly are
+not. That distinction drives everything in
+[chapter 10](10-remediation.md).
+
+### Pin the revision, and know what you pinned
+
+The content ships both unversioned and revision-pinned profile names —
+`ocp4-stig` alongside `ocp4-stig-v2r6`, and similarly for the other
+two. The unversioned name is an alias: it `extends` whichever revision
+the content build considered current, and **it moves when the content
+is updated**.
+
+For an ATO that is the wrong default. A result set captured against
+`ocp4-stig` records a profile name that will mean something different
+in six months, which is exactly the problem
+[the rule-ID policy](appendix-stig-cluster.md#why-so-few-rule-ids-appear-in-this-repository)
+exists to avoid. Bind the pinned names if your content ships them, so
+the benchmark revision is in the evidence rather than in someone's
+memory:
+
+```sh
+# ===== RUN ON: THE CLUSTER =====
+oc get profile.compliance -n openshift-compliance
+```
+
+Read the list before writing the binding. Whichever names you use, the
+revision goes in the evidence pack beside the results either way — the
+pinned name just means the two cannot drift apart.
+
+> 🚧 **DRAFT -- NOT VALIDATED.** The profile set and the `filter_rules`
+> exclusion are read from the ComplianceAsCode content, not from a
+> cluster. What that content builds into `Profile` objects, and whether
+> your mirrored operator version ships the same three, has to come from
+> the command above. The mirror gate in
+> [chapter 1](01-intake.md#the-mirror-gate) assumed two profiles when
+> it was written.
 
 Before writing any binding, read the scan settings the operator shipped
 and check which of them applies remediations. This is the step that
@@ -295,15 +342,15 @@ before binding anything to it.
 > against a cluster. Verify before running. Replace this block with the
 > command as run, then update VALIDATION.md.
 >
-> Three things to check before applying this. **(a)** The profile names:
-> substitute the revision-pinned names if your content ships them, and
-> confirm from `oc get profile.compliance` whether the content also
-> ships a separate `ocp4-stig-node` profile — some revisions split the
-> platform product's node checks out, and omitting it leaves a gap that
-> looks like a clean scan. **(b)** `settingsRef.name` — `default` is
-> believed to be the scan-only one, and getting this backwards on a
-> first run rolls every node before anyone has read a remediation.
-> **(c)** `roles`, discussed below.
+> Two things to check before applying this. **(a)**
+> `settingsRef.name` — `default` is believed to be the scan-only one,
+> and getting this backwards on a first run rolls every node before
+> anyone has read a remediation. **(b)** `roles`, discussed below.
+>
+> The profile list below is no longer in question — see *Three
+> profiles, not two* — but confirm the names exist on your content with
+> `oc get profile.compliance -n openshift-compliance` before binding,
+> because the revision-pinned names differ between content versions.
 
 ```yaml
 # ===== EDIT IN: ${OCP_INSTALL_ROOT}/day2/compliance/stig-baseline.yaml =====
@@ -316,6 +363,9 @@ profiles:
   - apiGroup: compliance.openshift.io/v1alpha1
     kind: Profile
     name: ocp4-stig
+  - apiGroup: compliance.openshift.io/v1alpha1
+    kind: Profile
+    name: ocp4-stig-node
   - apiGroup: compliance.openshift.io/v1alpha1
     kind: Profile
     name: rhcos4-stig
@@ -468,19 +518,27 @@ survive the cluster being rebuilt.
 
 ## Reading the results
 
-Four outcomes, and three of them need a human:
+Seven outcomes, and an eighth that is the empty string:
 
 | Status | Means | Who deals with it |
 |---|---|---|
 | `PASS` | the check passed | nobody |
 | `FAIL` | the check failed | [chapter 10](10-remediation.md) |
 | `MANUAL` | the scanner cannot determine this automatically | [chapter 11](11-manual-controls.md) — **these do not go away by scanning harder** |
-| `NOT-APPLICABLE` | the rule does not apply to this configuration | note it; an assessor may ask why |
+| `NOT-APPLICABLE` | the rule did not run because it does not apply, or was not selected | note it; an assessor may ask why |
 | `ERROR` | the check could not run | investigate — an `ERROR` is not a `PASS` and is easy to let slide into one |
+| `INFO` | the check found something below the error threshold | read it; it is not a failure and not nothing |
+| `INCONSISTENT` | **the check returned different results on different nodes** | investigate — this is a node that drifted, and it is invisible if you only count PASS and FAIL |
+| *(empty)* | the check yielded no usable result | the one that breaks arithmetic — see below |
 
 `MANUAL` is the category that gets lost. It is not a failure, so it does
 not appear on a remediation list, and it is not a pass, so the control is
 unsatisfied. Chapter 11 exists because of this row.
+
+`INCONSISTENT` is the one that matters most on a multi-node cluster and
+has no equivalent on single node. It means the same rule passed on one
+node and failed on another, which is a drift finding wearing a scan
+result's clothes.
 
 ```sh
 # ===== RUN ON: THE CLUSTER =====
@@ -488,20 +546,23 @@ oc get compliancecheckresult -A -l compliance.openshift.io/check-status=MANUAL
 oc get compliancecheckresult -A -l compliance.openshift.io/check-status=ERROR
 ```
 
-> 🚧 **DRAFT -- NOT VALIDATED.** Written from documentation, not executed
-> against a cluster. Verify before running. Replace this block with the
-> command as run, then update VALIDATION.md.
->
-> The key `compliance.openshift.io/check-status` is believed correct, and
-> the documented values are `PASS`, `FAIL`, `INFO`, `MANUAL`,
-> `INCONSISTENT`, `ERROR` and `NOTAPPLICABLE`. **Note the last one has no
-> hyphen in the label**, even though the printed status column in the
-> table above is written `NOT-APPLICABLE` — if those really differ, a
-> selector copied from the table matches nothing. Companion labels
-> believed to exist: `compliance.openshift.io/check-severity`,
-> `compliance.openshift.io/scan-name`, `compliance.openshift.io/suite`.
-> Confirm all of them from `--show-labels` on a real result rather than
-> from this list.
+**The value is `NOT-APPLICABLE`, with the hyphen.** An earlier draft of
+this chapter warned that the label might carry an unhyphenated
+`NOTAPPLICABLE` and that a selector copied from the table above would
+therefore match nothing. That warning was wrong, and so was the
+enumeration loop it guarded: the operator defines the constant as the
+hyphenated string, and the unhyphenated form matches nothing. If you
+ran the previous version of the loop below, its `NOT-APPLICABLE` count
+was zero regardless of the truth.
+
+> 🚧 **DRAFT -- NOT VALIDATED.** The status values are read from the
+> operator's `ComplianceCheckResult` type, not from a cluster. The label
+> **key** `compliance.openshift.io/check-status` is still only believed
+> correct, as are the companions
+> `compliance.openshift.io/check-severity`,
+> `compliance.openshift.io/scan-name` and `compliance.openshift.io/suite`.
+> Confirm the keys from `--show-labels` on a real result. The arithmetic
+> below is what catches it if they are wrong.
 
 A selector that matches nothing returns an empty list, which looks
 exactly like "there are none". So never read a selector's output alone —
@@ -510,17 +571,20 @@ reconcile it against the total:
 ```sh
 # ===== RUN ON: THE CLUSTER =====
 oc get compliancecheckresult -A --no-headers | wc -l
-for s in PASS FAIL MANUAL INFO INCONSISTENT ERROR NOTAPPLICABLE; do
-  printf '%-14s %s\n' "$s" \
+for s in PASS FAIL MANUAL INFO INCONSISTENT ERROR NOT-APPLICABLE; do
+  printf '%-16s %s\n' "$s" \
     "$(oc get compliancecheckresult -A --no-headers \
          -l compliance.openshift.io/check-status=$s 2>/dev/null | wc -l)"
 done
 ```
 
-The per-status counts must sum to the total. If they do not, a value in
-that list is wrong and some results are invisible to you — which is the
-worst outcome available here, because the ones that vanish are not the
-ones that were going to pass.
+The per-status counts must sum to the total. If they do not, the
+difference is either a wrong value in that list or the empty-status
+results, which no selector in the loop can match — and either way some
+results are invisible to you. That is the worst outcome available here,
+because the ones that vanish are not the ones that were going to pass.
+Chase the difference to zero before the numbers go anywhere near the
+evidence pack.
 
 ---
 

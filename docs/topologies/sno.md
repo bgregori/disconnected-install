@@ -334,7 +334,7 @@ topology diagram will say for you:
 
 ## Compliance
 
-Both profiles still apply. `rhcos4-stig` scans one node, which makes it
+All three profiles still apply. `rhcos4-stig` scans one node, which makes it
 faster and makes the remediation reboots more expensive — the inverse of
 the usual trade.
 

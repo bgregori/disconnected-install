@@ -371,7 +371,7 @@ wrong while doing it.
 
 ## Compliance
 
-Both profiles apply unchanged. `rhcos4-stig` scans three nodes rather
+All three profiles apply unchanged. `rhcos4-stig` scans three nodes rather
 than one, so results are per-node and a check can pass on two nodes and
 fail on the third.
 

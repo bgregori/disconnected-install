@@ -300,7 +300,7 @@ not already in the registry.** Specifically this repository later needs
 
 | Chapter | Content |
 |---|---|
-| [09](09-compliance-operator.md) | `compliance-operator`, and the `ocp4-stig` / `rhcos4-stig` profile content it ships |
+| [09](09-compliance-operator.md) | `compliance-operator`, and the `ocp4-stig` / `ocp4-stig-node` / `rhcos4-stig` profile content it ships — **three profiles, not two** |
 | [13](13-day2.md) | `file-integrity-operator` |
 | [05](05-first-access.md), [troubleshooting](troubleshooting.md) | `must-gather` and `support-tools` diagnostic images |
 | [sno](topologies/sno.md) | **LVM Storage** — if the topology is single node |

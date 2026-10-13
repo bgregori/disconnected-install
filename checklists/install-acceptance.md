@@ -151,7 +151,9 @@ Two staging points, and the items are not interchangeable. See
 ## 8. Compliance baseline
 
 - [ ] Compliance Operator installed **from the mirrored catalog**
-- [ ] `ocp4-stig` and `rhcos4-stig` both scanned
+- [ ] `ocp4-stig`, `ocp4-stig-node` and `rhcos4-stig` all three
+      scanned. `ocp4-stig` excludes node-level rules by construction,
+      so two profiles leave a class of rules unevaluated
 - [ ] **Baseline captured before any remediation**, dated, and copied
       off the cluster
 - [ ] Operator version and benchmark revision recorded with it

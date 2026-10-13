@@ -98,7 +98,9 @@ Built by: ______________________  ISSO: ______________________
       cluster at that point
 - [ ] **After** — dated, taken after remediation
 - [ ] **Delta** between them
-- [ ] Both profiles in both sets: `ocp4-stig` **and** `rhcos4-stig`
+- [ ] All three profiles in both sets: `ocp4-stig`, `ocp4-stig-node`
+      **and** `rhcos4-stig`. Two is the common mistake and it reads
+      as a clean scan
 - [ ] Operator version and benchmark revision recorded alongside each
 - [ ] Counts: baseline `FAIL` ______ → after `FAIL` ______
 - [ ] Any `PASS` → `FAIL` in the delta explained

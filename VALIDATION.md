@@ -170,8 +170,8 @@ to stand in front of a cluster and prove.
 | [06 Day-1 config](docs/06-day1-cluster-config.md) | 3 | **Mostly real** — it is prep's post-install step, restated. OSUS and the full pull-path proof are drafted; the OSUS draft is the weakest in the repository. |
 | [07 Identity](docs/07-identity.md) | 9 | **Structure real, commands drafted.** The ordering, the gate before deleting `kubeadmin` and the five rules are the substance and are unchanged. Every resource and the deletion command are drafted. |
 | [08 Encryption at rest](docs/08-encryption-at-rest.md) | 4 | **Drafted.** The distinction from disk encryption and the configured-versus-migrated trap are real. The FIPS cipher choice is deliberately left unasserted. |
-| [09 Compliance Operator](docs/09-compliance-operator.md) | 7 | **Partly real.** The baseline-first argument, capture commands and result taxonomy are real. Install manifests, `ScanSettingBinding` and label selectors are drafted. |
-| [10 Remediation](docs/10-remediation.md) | 8 | **Partly real.** Reboot economics, review discipline and delta capture are real. Review/apply/decline are drafted. Reboot timings are a drafted *method*, not figures. |
+| [09 Compliance Operator](docs/09-compliance-operator.md) | 8 | **Partly real.** The baseline-first argument and capture commands are real. The result taxonomy and the three-profile set are now read from the operator and the content — see below — but the label *keys* and the `ScanSettingBinding` shape are still drafted. |
+| [10 Remediation](docs/10-remediation.md) | 7 | **Partly real.** Reboot economics, review discipline and delta capture are real. The absence of a declined state and the seven `applicationState` values are now confirmed from the operator. Review and apply are drafted. Reboot timings are a drafted *method*, not figures. |
 | [11 Manual controls](docs/11-manual-controls.md) | 9 | **Mostly real as a process.** Banner (three distinct things), audit forwarding and RBAC review are drafted. |
 | [12 Evidence pack](docs/12-evidence-pack.md) | 0 | **Real.** Structure, not procedure — nothing here needs hardware. Its one `TODO` is a question for a human, not a hardware gap, and stays a `TODO`. |
 | [13 Day-2](docs/13-day2.md) | 9 | **Partly real.** The handback to prep and the drift table are real. Upgrade, scheduled scans and File Integrity are drafted. |
@@ -185,18 +185,6 @@ to stand in front of a cluster and prove.
 Found while drafting, not yet resolved. Each is a real question about
 the existing content rather than a gap in it:
 
-- **`NOT-APPLICABLE` versus `NOTAPPLICABLE`.** Chapter 9's results
-  table prints the hyphenated form; upstream CRD documentation gives
-  the unhyphenated one as the allowed value. A label selector copied
-  from the table would match nothing and report zero, which reads as a
-  clean scan. Unresolved, and flagged in chapter 9.
-- **The two-profile model may be incomplete.** Some content revisions
-  ship `ocp4-stig-node` alongside `ocp4-stig` and `rhcos4-stig`.
-  Omitting a third profile also produces a gap that reads as a pass.
-- **There may be no cluster-side "declined" state for a remediation.**
-  If so, `apply: false` is indistinguishable from "nobody looked", and
-  the exceptions register is the *only* record rather than the
-  recommended one.
 - **Chapter 7's step order has a dependency the skeleton did not
   model.** `Group` objects only materialise after a member's first IdP
   login, so step 4 cannot read the authoritative group name until
@@ -251,6 +239,72 @@ derived from the right source rather than from the wrong installer.
   **which cipher this path selects on a `fips: true` cluster**, since
   there is no Butane config to carry `openshift: fips: true` and no
   cipher field to set.
+
+- **`NOT-APPLICABLE` carries the hyphen, and the warning was
+  backwards** (2026-10-13). The operator defines
+  `CheckResultNotApplicable = "NOT-APPLICABLE"`. Chapter 9's results
+  table was right; its warning — that the CRD gave an unhyphenated
+  `NOTAPPLICABLE` — was wrong, and the enumeration loop that followed
+  the warning used the unhyphenated form and would have counted zero
+  every time, in a chapter whose whole point is that a zero reads as a
+  clean scan.
+
+  Two more values were missing from the table and are now in it: `INFO`,
+  and `INCONSISTENT` — the latter meaning *the same rule returned
+  different results on different nodes*, which is a drift finding that
+  a PASS/FAIL count discards. There is also an **empty-string status**
+  for a check that yielded no usable result, which no label selector in
+  the loop can match; the chapter now says to chase the difference
+  between the per-status sum and the total to zero rather than assuming
+  it is rounding.
+
+  Source: `ComplianceAsCode/compliance-operator`
+  `pkg/apis/compliance/v1alpha1/compliancecheckresult_types.go`. The
+  label **key** is still unconfirmed; only the values are settled.
+
+- **There are three STIG profiles, and `ocp4-stig` excludes the node
+  rules by construction** (2026-10-13). Not "some revisions ship a
+  third" — `ocp4-stig` carries a `filter_rules` expression dropping
+  every rule whose platform is `ocp4-node`, `ocp4-master-node`,
+  `ocp4-node-on-sdn` or `ocp4-node-on-ovn`. Those rules live in
+  `ocp4-stig-node`. Bind two profiles and they are never evaluated —
+  not `FAIL`, not `NOT-APPLICABLE`, absent — and the scan reports
+  clean on a question it did not ask.
+
+  `ocp4-stig-node` is also not a substitute for `rhcos4-stig`: one is
+  OpenShift's configuration of the node, the other the operating
+  system under it.
+
+  Related, and now acted on: the content ships **revision-pinned
+  profile names** (`ocp4-stig-v2r6` beside `ocp4-stig`). The
+  unversioned name is an alias that moves when content is updated,
+  which is the wrong default for a result set that has to mean the
+  same thing at assessment time. Chapter 9 now says to pin.
+
+  Source: `ComplianceAsCode/content` `products/ocp4/profiles/` and
+  `products/rhcos4/profiles/`, current content V2R6. Corroborating
+  detail worth noting: `ocp4-stig` sets
+  `var_oauth_token_maxage=8h`, which is the 28800 seconds
+  CNTR-OS-000760 requires and chapter 7 already configures.
+
+- **There is no cluster-side "declined" state. Confirmed**
+  (2026-10-13). `spec.apply` is a plain boolean and
+  `status.applicationState` is one of `Pending`, `NotApplied`,
+  `Applied`, `Outdated`, `Error`, `MissingDependencies`,
+  `NeedsReview`, defaulting to `NotApplied`. Nothing means "reviewed
+  and rejected". Chapter 10 drafted this as a suspicion and built the
+  exceptions register on it; the suspicion was right.
+
+  One thing found that the chapter had not anticipated: the operator's
+  `IsApplied()` helper **returns true for a remediation that is
+  blocked** — `apply: true` with state `MissingDependencies` counts as
+  applied, as does `apply: true` with `Outdated`. Anything derived
+  from that helper, including the operator's own rendering, will
+  overcount what was actually applied. Chapter 10 now counts
+  `applicationState == Applied` directly and reconciles the rest.
+
+  Source: `ComplianceAsCode/compliance-operator`
+  `pkg/apis/compliance/v1alpha1/complianceremediation_types.go`.
 
 - **Chapter 2's `.bak` block** is fixed — split in two, with the reason
   the single-block version failed written out.

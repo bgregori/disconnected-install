@@ -11,15 +11,24 @@ This appendix is about the cluster.
 
 ---
 
-## Three different things called "STIG"
+## Four different things called "STIG"
 
 Conflated constantly, and the distinction decides who owns what.
 
 | | What it hardens | Where it is applied | Who owns it |
 |---|---|---|---|
 | **RHEL 9 STIG** | the install host, the registry host, the IdP host | at OS build, by the platform team | not this repo — see [prep](https://github.com/bgregori/disconnected-prep/blob/main/docs/appendix-fips-stig.md) |
-| **`rhcos4-stig`** | the RHCOS nodes | MachineConfigs, at install and after | [ch. 3](03-manifests.md), [ch. 10](10-remediation.md) |
+| **`rhcos4-stig`** | the RHCOS operating system on the nodes | MachineConfigs, at install and after | [ch. 3](03-manifests.md), [ch. 10](10-remediation.md) |
+| **`ocp4-stig-node`** | OpenShift's node-level configuration — kubelet, the runtime | MachineConfigs | [ch. 10](10-remediation.md) |
 | **`ocp4-stig`** | the OpenShift platform itself | cluster resources | [ch. 6](06-day1-cluster-config.md) through [ch. 11](11-manual-controls.md) |
+
+The middle two are the pair that gets collapsed into one. They are
+different layers on the same machine: `rhcos4-stig` is the operating
+system, `ocp4-stig-node` is OpenShift's configuration *of* that
+operating system. And `ocp4-stig` is not a superset of either — it
+filters node-platform rules out by construction, which is why
+[chapter 9](09-compliance-operator.md#three-profiles-not-two) insists
+on all three.
 
 The confusion that costs time: **RHCOS is not RHEL from the benchmark's
 point of view.** Applying RHEL 9 STIG remediations to a node by hand

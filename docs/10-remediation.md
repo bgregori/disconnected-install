@@ -106,10 +106,11 @@ oc get complianceremediation/<name> -n openshift-compliance \
   -o custom-columns=NAME:.metadata.name,STATE:.status.applicationState
 ```
 
-`status.applicationState` is believed to take the values `NotApplied`,
-`Pending`, `Applied`, `Outdated`, `Error`, `MissingDependencies` and
-`NeedsReview`. Only the first two and `Applied` are normal; the rest are
-discussed below.
+`status.applicationState` takes exactly seven values — `NotApplied`
+(the default), `Pending`, `Applied`, `Outdated`, `Error`,
+`MissingDependencies` and `NeedsReview`. Read from the operator's
+types, so the list is complete; what each one means in practice is
+still drafted below. Only the first three are normal.
 
 > ⚠️ **Set `apply: true` on a batch, not one at a time** — see the reboot
 > economics below. The per-remediation command above is for the first
@@ -117,17 +118,17 @@ discussed below.
 
 ### Declining one
 
-> 🚧 **DRAFT -- NOT VALIDATED.** Written from documentation, not executed
-> against a cluster. Verify before running. Replace this block with the
-> command as run, then update VALIDATION.md.
->
-> The belief here is a negative one and it is the important part of this
-> section: **there appears to be no cluster-side "declined" state.** A
-> remediation you reviewed and rejected sits at `apply: false` /
-> `NotApplied`, which is byte-for-byte what a remediation nobody has
-> looked at yet looks like. If the operator does carry a decline
-> mechanism at your version, find it and use it; if it does not, the
-> consequence below holds.
+**There is no cluster-side "declined" state.** This was drafted as a
+suspicion and is now confirmed from the operator's own types:
+`spec.apply` is a plain boolean with no third value, and
+`status.applicationState` is one of `Pending`, `NotApplied`, `Applied`,
+`Outdated`, `Error`, `MissingDependencies`, `NeedsReview` — defaulting
+to `NotApplied`. Nothing in that set means "a human looked at this and
+said no".
+
+So a remediation you reviewed and rejected is byte-for-byte identical
+to one nobody has opened. That is not a gap to work around; it is the
+fact the rest of this section is built on.
 
 **The decline record lives outside the cluster, or it does not exist.**
 Anything you decline goes in the **exceptions register** immediately,
@@ -284,7 +285,7 @@ before anybody has read what it is about to change.
 > wrong way round is the specific accident this repository exists to
 > prevent**, so do not take the name from this page. Read the booleans
 > off the cluster, as
-> [chapter 9](09-compliance-operator.md#the-two-profiles) does, and
+> [chapter 9](09-compliance-operator.md#three-profiles-not-two) does, and
 > decide from those.
 
 ```sh
@@ -358,6 +359,32 @@ design, so the fix is not disruptive. That is correct behaviour and it
 looks exactly like [the stuck-paused-pool failure](#batching-pause-the-pool)
 above. Check `spec.paused` and `applicationState` together before
 concluding anything about a pool that will not roll.
+
+> **Do not count "applied" by asking the operator.** Its own
+> `IsApplied()` helper returns true for three different situations: the
+> state is genuinely `Applied`; or `apply: true` and the state is
+> `Outdated`; or **`apply: true` and the state is
+> `MissingDependencies`** — a remediation that is explicitly blocked
+> from applying. Anything built on that helper, including whatever the
+> operator renders in a report, will count a blocked remediation as a
+> done one.
+>
+> For the evidence pack, count `applicationState == Applied` yourself
+> and reconcile the rest by state. The number that goes to an ISSO
+> should be one you can derive from the object list, not one the
+> operator summarised for you.
+
+```sh
+# ===== RUN ON: THE CLUSTER =====
+oc get complianceremediation -n openshift-compliance \
+  -o jsonpath='{range .items[*]}{.spec.apply}{"\t"}{.status.applicationState}{"\n"}{end}' \
+  | sort | uniq -c | sort -rn
+```
+
+Read that table as a grid. `true` against anything other than `Applied`
+is work that is not finished; `false` against anything is a decision
+nobody can see from the cluster, which is what the exceptions register
+is for.
 
 So the second pass is a loop, not a step: **apply → re-scan → look again
 at what is still failing → apply.** Expect at least two rounds. Budget

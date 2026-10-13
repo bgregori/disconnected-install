@@ -185,7 +185,8 @@ Image source:      mirror registry at <registry>, no internet egress
 Dependencies:      mirror registry, NTP <source>, IdP <host>,
                    Tang <servers>, audit destination <host>
 Compliance:        compliance-operator <version>,
-                   profiles ocp4-stig / rhcos4-stig,
+                   profiles ocp4-stig / ocp4-stig-node /
+                   rhcos4-stig,
                    benchmark revision <revision>
 ```
 

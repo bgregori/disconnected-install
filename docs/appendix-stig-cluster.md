@@ -44,8 +44,14 @@ what the File Integrity Operator in [chapter 13](13-day2.md) will report
 
 ## Why so few rule IDs appear in this repository
 
-Five, all in [chapter 7](07-identity.md), all about authentication. That
-is deliberate and it is the main thing this appendix is here to explain.
+Nine out of eighty-three. Five in [chapter 7](07-identity.md) about
+authentication, and four about cryptography — three for FIPS in
+[chapter 2](02-install-config.md#fips-true), one for etcd in
+[chapter 8](08-encryption-at-rest.md). That is deliberate and it is the
+main thing this appendix is here to explain.
+
+The nine are not the important ones because they are the important
+controls. They are the ones somebody read.
 
 Rule IDs look like stable identifiers and are not:
 
@@ -105,18 +111,40 @@ The install-time choices that cannot be revisited, collected because
 they are scattered through the chapters and the list is what people
 want:
 
-| Decision | Set at | Changing it later means |
-|---|---|---|
-| `fips: true` | [ch. 2](02-install-config.md) | reinstall |
-| Boot-disk encryption and mode | [ch. 3](03-manifests.md) | reprovision every node |
-| Topology / replica counts | [ch. 2](02-install-config.md) | reinstall |
-| Cluster name, base domain | [ch. 2](02-install-config.md) | reinstall |
-| Pod and service network CIDRs | [ch. 2](02-install-config.md) | unsupported |
+| Decision | Set at | Changing it later means | Caught by a scan? |
+|---|---|---|---|
+| `fips: true` | [ch. 2](02-install-config.md) | reinstall | **yes** — three controls |
+| Boot-disk encryption and mode | [ch. 3](03-manifests.md) | reprovision every node | **no** — see below |
+| Topology / replica counts | [ch. 2](02-install-config.md) | reinstall | no |
+| Cluster name, base domain | [ch. 2](02-install-config.md) | reinstall | no |
+| Pod and service network CIDRs | [ch. 2](02-install-config.md) | unsupported | no |
 
 Everything else in this repository is recoverable. These five are the
 conversation to have before the build, which is why
-[chapter 1](01-intake.md#decide-before-you-install) ends with them and
-why prep raises disk encryption at handoff rather than leaving it here.
+[chapter 1](01-intake.md#decide-before-you-install) ends with them.
+
+The first two are the pair worth separating, because they are the two
+with a compliance consequence and they behave in opposite ways.
+
+**`fips: true` is required and checked.** CNTR-OS-000340,
+CNTR-OS-000510 (high) and CNTR-OS-001080 all reduce to
+`fips_mode_enabled_on_all_nodes`, and that check reads one thing: the
+line in `install-config.yaml`. Omit it and three controls fail on the
+first scan. Loud, early, unambiguous — the good kind of failure.
+
+**Boot-disk encryption is required by the accreditation and checked by
+nothing.** No control in the benchmark asks about it. An unencrypted
+cluster returns a clean `ocp4-stig`, a clean `ocp4-stig-node` and a
+clean `rhcos4-stig`, and produces an evidence pack with nothing wrong
+in it. The requirement comes from protection of information at rest and
+from the site's own policy on media leaving the facility, neither of
+which the Compliance Operator implements.
+
+That asymmetry is the argument for prep raising disk encryption at
+handoff rather than leaving it here: FIPS has a safety net and disk
+encryption has none. The only thing standing between a deferred
+decision and an unencrypted accredited cluster is somebody writing it
+down at intake.
 
 ---
 
@@ -127,7 +155,9 @@ cluster afterwards.
 
 **Reboots become the unit of change.** Most node-level hardening is a
 MachineConfig, and a MachineConfig is a rolling reboot. Routine changes
-that are instant on an unhardened cluster are change windows here. See
+that are instant on an unhardened cluster become scheduled, announced
+work once this cluster is in service — which is a fact to hand to
+whoever operates it, not a constraint on the build. See
 [chapter 10's reboot economics](10-remediation.md#reboot-economics) and,
 for the extreme case, [single node](topologies/sno.md#outage-semantics).
 

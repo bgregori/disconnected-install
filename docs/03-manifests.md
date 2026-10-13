@@ -164,9 +164,53 @@ the cluster. Encryption at rest inside the cluster
 ([chapter 8](08-encryption-at-rest.md)) does not help if the disk itself
 is readable.
 
-A cluster installed without it **has to be reprovisioned to get it**. For
-an accredited build that usually means reinstalling after the finding,
-which is why prep raises it at handoff rather than leaving it here.
+A cluster installed without it **has to be reprovisioned to get it**.
+There is no MachineConfig, no operator and no maintenance task that
+encrypts a root filesystem in place — the disk is laid down at first
+boot or it is not. This is one of the two decisions in this repository
+that an install gets exactly one attempt at, the other being
+[`fips: true`](02-install-config.md#fips-true).
+
+### It is not a STIG control, and that is the problem
+
+Worth stating plainly, because the natural assumption is the opposite
+and the assumption is dangerous.
+
+**No control in the OpenShift STIG requires boot-disk encryption.** Not
+at V2R6: there is no LUKS rule, no boot-disk rule, and the only control
+in the benchmark that mentions data at rest is CNTR-OS-000780, which is
+about etcd and the keystore — [chapter 8](08-encryption-at-rest.md), a
+different mechanism protecting a different thing. Neither
+`ocp4-stig`, `ocp4-stig-node` nor `rhcos4-stig` will look at your
+disks.
+
+So the consequence is not "you will fail a check". It is worse:
+
+> **An unencrypted cluster produces a clean scan.** Every profile
+> passes, the evidence pack reads well, and the gap is invisible to the
+> one mechanism this repository otherwise relies on to find gaps.
+
+What makes it a requirement anyway is the control the STIG is a partial
+implementation of — protection of information at rest — and whatever
+your ISSO and your system security plan say about media leaving the
+facility. That is a conversation, and it has to happen **before** the
+ISO is generated, because afterwards the answer costs a rebuild.
+
+Two things follow:
+
+- **Get the decision in writing at intake**, not at assessment. The
+  [install acceptance checklist](../checklists/install-acceptance.md)
+  has a line for "none, accepted by ISSO" precisely so that *not*
+  encrypting is a recorded decision rather than an omission nobody
+  made.
+- **If you do encrypt, the evidence is yours to produce.** No scan
+  result will carry it. The per-node `cryptsetup` output at the end of
+  this section is the artifact, and it exists only because somebody ran
+  it and pasted it into the pack.
+
+Prep raises this at handoff rather than leaving it here for the same
+reason: it is the decision most likely to be deferred, and the only one
+where deferring it past the ISO is the same as deciding against it.
 
 Two modes, and they answer different questions:
 

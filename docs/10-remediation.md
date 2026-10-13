@@ -155,8 +155,17 @@ never replaces it.
 
 ## Reboot economics
 
-This is the section to read before planning the work, because it
-determines whether remediation is one maintenance window or five.
+Read this before planning the work. On an initial build there is no
+change window to overrun and nothing in service to disrupt — the cost is
+elapsed time, and the risk is breaking the cluster you are standing in
+front of. Both are real. A three-node compact cluster rolled carelessly
+loses etcd quorum whether or not anything is running on it, and on single
+node every rollout is a serial reboot you wait out.
+
+The reason to get the discipline right now, when it is cheap, is that it
+stops being cheap at handover. Everything below is also the method
+[chapter 13](13-day2.md) depends on, when there *is* a change window and
+the numbers have to be credible in advance.
 
 Node remediations are delivered as `MachineConfig` objects. The Machine
 Config Operator coalesces pending changes into a single rendered config
@@ -218,10 +227,12 @@ oc get machineconfigpool -w
 ```
 
 > ⚠️ **A paused pool is a pool that is not getting security updates
-> either.** Unpause it in the same change window you paused it in. A pool
-> left paused is invisible — nothing is degraded, nothing alerts, and
-> the next three months of `MachineConfig` changes quietly do not apply.
-> Unpause one pool at a time and let it finish before the next.
+> either.** Unpause it before you walk away from it — the same sitting,
+> not the next one. A pool left paused is invisible: nothing is degraded,
+> nothing alerts, and the next three months of `MachineConfig` changes
+> quietly do not apply. A build-time pause that nobody unpaused is a
+> finding that surfaces long after anyone remembers pausing it. Unpause
+> one pool at a time and let it finish before the next.
 
 The applied node remediations are believed to be rendered into a single
 `MachineConfig` per scan, named on the pattern
@@ -237,9 +248,13 @@ but the object is absent, nothing was applied and the scan will say so.
 >
 > **There are no measured numbers in this repository yet**, and the
 > hand-waving above stays hand-waving until there are. This is the
-> procedure for getting them, not the answer. A measured figure is what
-> makes a change request credible; "a few reboots" is what makes a
-> two-hour window a six-hour one.
+> procedure for getting them, not the answer.
+>
+> Measure it here because here is the only place you can: an empty
+> cluster, nothing to drain, no one waiting. The figure is not for this
+> rollout — it is what makes [chapter 13's](13-day2.md) first real change
+> request credible, and "a few reboots" is what turns a two-hour window
+> into a six-hour one once there *is* a window.
 
 ```sh
 # ===== RUN ON: THE CLUSTER =====
@@ -254,9 +269,10 @@ CONFIG:.metadata.annotations.machineconfiguration\.openshift\.io/currentConfig
 ```
 
 Record three numbers and put them in the evidence pack: per-node drain +
-reboot + rejoin, nodes per pool, and the total for the batch. They are
-the input to every subsequent change request, including
-[chapter 13's](13-day2.md) upgrades.
+reboot + rejoin, nodes per pool, and the total for the batch. Nothing in
+this chapter needs them. They are the input to every change request made
+*after* handover, including [chapter 13's](13-day2.md) upgrades, and this
+is the last time the cluster is quiet enough to measure them cleanly.
 
 ---
 

@@ -19,6 +19,26 @@ encrypted" is frequently offered as a reason to skip this:
 An etcd backup copied to a share is the case that catches people. The
 node it came from is encrypted; the backup is a file.
 
+**Only one of the two is a STIG control, and it is this one.**
+CNTR-OS-000780 — *the keystore must implement encryption to prevent
+unauthorized disclosure of information at rest within the container
+platform* — is checked by `api_server_encryption_provider_cipher`, so
+a cluster that skips this chapter fails a scan and is told so. Nothing
+in the benchmark asks about the disks, which is
+[chapter 3's problem](03-manifests.md#it-is-not-a-stig-control-and-that-is-the-problem),
+not this chapter's.
+
+That cuts both ways, and the second direction is the one to watch:
+because this control is scanned and disk encryption is not, "encryption
+at rest" in a review conversation tends to resolve to whichever of the
+two the scan mentioned. They are different mechanisms protecting
+different things, and the evidence pack needs both named separately.
+
+Unlike chapter 3, none of this is install-time. It is a day-1 operation
+on a running cluster and it can be done late — so it is not a decision
+that has to be made before the ISO, only one that has to be made before
+anyone signs anything.
+
 ---
 
 ## Enabling it

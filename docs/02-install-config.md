@@ -107,16 +107,41 @@ to registry pulls.
 
 ### `fips: true`
 
-Set here, immutable afterwards. Two things follow from it that are easy to
-treat as problems:
+**Set here, immutable afterwards, and required by the STIG.** Three
+controls depend on it, and all three are satisfied by the same check,
+`fips_mode_enabled_on_all_nodes`:
+
+| Rule | Requirement | Severity |
+|---|---|---|
+| CNTR-OS-000340 | FIPS-validated cryptography protecting the integrity of log information | medium |
+| CNTR-OS-000510 | FIPS-validated 140-2 or 140-3 cryptography protecting session authenticity | **high** |
+| CNTR-OS-001080 | FIPS-validated SHA-2 or higher for digital signature generation and verification | medium |
+
+Read at benchmark revision V2R6 — see
+[the rule-ID policy](../README.md#on-stig-rule-ids) for where from, and
+why that caveat is attached to every ID in this repository.
+
+That check has exactly one input, and this line is it. There is no
+operator, no MachineConfig and no day-2 task that turns FIPS on
+afterwards. **A cluster installed without this line fails three
+controls, one of them high, and the remedy is a reinstall** — so it is
+the first thing in this file and the first thing
+[chapter 1](01-intake.md#the-install-host) gates on.
+
+Three things follow from it that are easy to mistake for problems:
 
 - **The installer binary must be `openshift-install-fips`,** extracted
   from your own registry. Chapter 1 installed it.
 - **The host running it must itself be in FIPS mode.** Chapter 1 checked
-  it.
-- **LUKS2 uses `aes-cbc-essiv:sha256`** rather than the default. That is
-  expected under FIPS, not a misconfiguration — see
-  [03-manifests.md](03-manifests.md).
+  it. The binary alone is not enough and neither is the host alone.
+- **LUKS2 uses `aes-cbc-essiv:sha256`** rather than the default, if you
+  encrypt the disks. That is expected under FIPS, not a
+  misconfiguration — see [03-manifests.md](03-manifests.md).
+
+> Disk encryption is the *other* install-time decision with no second
+> attempt, and unlike this one it is **not** a STIG control — nothing
+> will scan for it. [Chapter 3](03-manifests.md#it-is-not-a-stig-control-and-that-is-the-problem)
+> explains why that makes it more dangerous to defer, not less.
 
 ---
 

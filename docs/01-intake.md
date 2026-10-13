@@ -3,7 +3,7 @@
 What must be true before you generate an ISO. This chapter is a gate, not
 a setup step: everything in it is a check, and every check that fails here
 is cheap compared to the same fact discovered at bootstrap, on the wrong
-side of an airgap, with a change window burning.
+side of an airgap, with no way to fetch the thing you are missing.
 
 Work it top to bottom. It ends with the handoff bundle verified, the
 environment confirmed, and the mirror proven to contain what chapters 6
@@ -181,7 +181,8 @@ with a release image reference resolving to **your** registry rather than
 
 Four facts about the target network. Every one of them is confirmable in
 under a minute now, and every one of them, discovered later, costs a
-reinstall or a change window.
+reinstall — or a trip back into the enclave to ask someone who is not in
+the room.
 
 > ⚠️ **None of these may be checked from the install host, and none may be
 > checked from the registry host.** The question is always what a *cluster
@@ -512,20 +513,43 @@ name and its membership with whoever owns identity, in writing, now.
 These cannot be changed after the cluster exists. Changing any of them
 means a reinstall.
 
-1. **`fips: true`.** Set at install, immutable afterwards. See
-   [02-install-config.md](02-install-config.md).
-2. **Boot-disk encryption, and which mode.** TPM v2 **or** Tang/NBDE —
-   on the agent-based installer they do not combine, so decide which
-   single failure mode the site accepts. Configured as a
-   `diskEncryption` block in
+The first two are the ones this repository exists for, they are the two
+the STIG and the ISSO care about most, and they fail in opposite ways:
+**one of them a scan will catch, and the other it will not.** Decide
+both here, in writing, with whoever signs the ATO.
+
+1. **`fips: true`. Required by the STIG, and the scan checks it.**
+   Three controls — CNTR-OS-000340, CNTR-OS-000510 (**high**) and
+   CNTR-OS-001080 — all satisfied by the single check
+   `fips_mode_enabled_on_all_nodes`, whose only input is this line.
+   Set at install, immutable afterwards, no day-2 route. Get it wrong
+   and the cluster fails three controls and gets reinstalled. See
+   [02-install-config.md](02-install-config.md#fips-true).
+2. **Boot-disk encryption, and which mode. No scan will catch this
+   one.** There is no STIG control requiring it — not at V2R6 — so an
+   unencrypted cluster passes every profile cleanly and the gap is
+   invisible to the entire apparatus of chapters 9 through 12. It is
+   still an accreditation requirement at most sites, via protection of
+   information at rest and whatever your SSP says about media leaving
+   the facility, and it is still irreversible. Decide it with the ISSO
+   and **write the decision down either way** — including "none,
+   accepted", which the
+   [acceptance checklist](../checklists/install-acceptance.md) has a box
+   for so that not encrypting is a decision somebody made rather than
+   one nobody did.
+
+   TPM v2 **or** Tang/NBDE — on the agent-based installer they do not
+   combine, so decide which single failure mode the site accepts.
+   Configured as a `diskEncryption` block in
    `cluster-manifests/agent-cluster-install.yaml`, which exists only
    after `agent create cluster-manifests` has run — see
-   [03-manifests.md](03-manifests.md). Prep raises this at handoff
-   precisely because it is not an `install-config.yaml` field and so gets
-   missed:
+   [03-manifests.md](03-manifests.md#it-is-not-a-stig-control-and-that-is-the-problem).
+   Prep raises this at handoff precisely because it is not an
+   `install-config.yaml` field and so gets missed:
    [prep 08 — disk encryption](https://github.com/bgregori/disconnected-prep/blob/main/docs/08-handoff.md#disk-encryption-the-other-decision-made-at-install).
    The field **defaults to no encryption**, so "we didn't decide" and
-   "we decided against it" produce the same cluster.
+   "we decided against it" produce the same cluster — and nothing
+   downstream distinguishes them.
 3. **Topology.** Single node, three-node compact, or multi-node. Replica
    counts are install-time. See
    [topologies/sno.md](topologies/sno.md) and

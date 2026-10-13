@@ -216,9 +216,11 @@ back into the installer looks like a node that failed to install.
 
 > ⚠️ **STIG** Out-of-band management interfaces are usually on their own
 > restricted network with their own access controls, and virtual media
-> may be disabled by policy. Confirm you can actually mount an ISO before
-> the change window, not during it. The fallback — physical media, or a
-> USB device — has its own policy problems on a hardened site.
+> may be disabled by policy. Confirm you can actually mount an ISO on the
+> day you ask for access, not on the day you need to boot. The fallback —
+> physical media, or a USB device — has its own policy problems on a
+> hardened site, and sorting either out is measured in days of paperwork
+> rather than minutes.
 
 ### Watching it
 

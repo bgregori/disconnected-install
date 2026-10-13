@@ -136,8 +136,9 @@ Consequences for [chapter 10](../10-remediation.md):
   it is thirty.
 - **Check you have headroom before starting a rollout.** Two nodes must
   be able to carry everything the third was running, plus the control
-  plane. If they cannot, the rollout stalls on a drain and you are
-  debugging pod disruption budgets during a change window.
+  plane. If they cannot, the rollout stalls on a drain, and debugging pod
+  disruption budgets is a much better way to spend an afternoon during
+  the build than after handover.
 - **Watch the pool to completion**, every time, before applying anything
   else:
 
@@ -176,8 +177,8 @@ has.
 > command as run, then update VALIDATION.md.
 
 The numbers below are deliberately absent, because inventing them is
-worse than not having them: a change request built on a guessed reboot
-time is a change window that overruns. What is drafted here is the
+worse than not having them: a day-2 change request built on a guessed
+reboot time is a window that overruns. What is drafted here is the
 *method* for getting them on the first real rollout, which is the one
 chance you have to measure an empty cluster.
 
@@ -202,7 +203,8 @@ Record four timestamps per node, from the first rollout you run:
 | node done | `updatedMachineCount` increments |
 
 Three nodes × (drain + reboot + rejoin), plus the MCO's wait for etcd
-between nodes, is the figure to put in the change request. Measure it
+between nodes, is the figure day-2 change requests are built on. Measure
+it
 on the IDMS/ITMS rollout in
 [chapter 6](../06-day1-cluster-config.md) — it is the first real
 three-node rollout this cluster will do, it has to happen anyway, and

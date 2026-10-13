@@ -20,9 +20,24 @@ of a cluster that has no other credential.
 | **CNTR-OS-000430** | Multifactor authentication — satisfied **at the IdP**, not in the cluster. |
 | **CNTR-OS-000760** | `accessTokenMaxAgeSeconds` no greater than 28800 (eight hours). |
 
-These five are cited because they have been read and confirmed. Nothing
-else in this repository cites a rule ID — see
+These five are cited because they have been read and confirmed. Four
+more are cited elsewhere — three for FIPS in
+[chapter 2](02-install-config.md#fips-true) and one for etcd encryption
+in [chapter 8](08-encryption-at-rest.md) — and nothing else in this
+repository cites a rule ID at all. See
 [the README](../README.md#on-stig-rule-ids).
+
+> ⚠️ **These five carry no benchmark revision.** They were confirmed
+> during earlier work and the revision was not written down, which is
+> the exact omission this repository warns about everywhere else. The
+> four cryptography rules were read at **V2R6** and say so. Re-confirm
+> these against your own revision before any of them reaches an SSP,
+> and record it here when you do.
+
+One is independently corroborated: `ocp4-stig` sets
+`var_oauth_token_maxage=8h` in the content, which is the 28800 seconds
+CNTR-OS-000760 requires. That is not the same as having read the
+benchmark, but it is more than nothing.
 
 Note what CNTR-OS-000030 and CNTR-OS-000460 jointly rule out: the
 HTPasswd provider that almost every OpenShift walkthrough uses as a quick

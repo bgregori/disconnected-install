@@ -204,8 +204,10 @@ Two staging points, and the items are not interchangeable. See
 
 ### Single node
 
-- [ ] Understood: every MachineConfig change is a **full outage**
-- [ ] Remediations batched into planned windows, not applied ad hoc
+- [ ] Understood: every MachineConfig change is a **full outage** — a
+      fact about the cluster being handed over, not about the build
+- [ ] Remediations batched rather than applied one at a time, and the
+      per-rollout time measured while the cluster is still empty
 
 ### Three-node compact
 

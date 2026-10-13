@@ -55,8 +55,9 @@ repository is built on preferring the first.
 ## The third state: drafts
 
 An empty section is honest, and it is also unusable. Someone standing in
-front of a cluster with a change window open needs something to verify,
-and "this section is deliberately blank" sends them to a search engine,
+front of a cluster, inside an enclave, with no way to look anything up,
+needs something to verify — and "this section is deliberately blank"
+sends them to a search engine on the other side of the airgap,
 where they will find a command written for a connected, non-FIPS,
 unhardened cluster and run it anyway.
 
@@ -141,19 +142,61 @@ prep could not.
 
 ---
 
-## STIG rules cited, and why only five
+## STIG rules cited, and why only nine
 
-Five rule IDs appear, all in [chapter 7](docs/07-identity.md), all
-concerning authentication. They were read and confirmed during the
-sibling work:
+Five concern authentication, in [chapter 7](docs/07-identity.md). They
+were read and confirmed during the sibling work, and no revision was
+recorded against them at the time — which, by this file's own rule, is
+a gap:
 
-| Rule | Requirement |
-|---|---|
-| CNTR-OS-000030 | IdP must be LDAP or OpenID; HTPasswd prohibited |
-| CNTR-OS-000460 | As above, different control family |
-| CNTR-OS-000040 | `kubeadmin` credential must be removed |
-| CNTR-OS-000430 | MFA — satisfied at the IdP |
-| CNTR-OS-000760 | `accessTokenMaxAgeSeconds` ≤ 28800 |
+| Rule | Requirement | Revision |
+|---|---|---|
+| CNTR-OS-000030 | IdP must be LDAP or OpenID; HTPasswd prohibited | **not recorded** |
+| CNTR-OS-000460 | As above, different control family | **not recorded** |
+| CNTR-OS-000040 | `kubeadmin` credential must be removed | **not recorded** |
+| CNTR-OS-000430 | MFA — satisfied at the IdP | **not recorded** |
+| CNTR-OS-000760 | `accessTokenMaxAgeSeconds` ≤ 28800 | **not recorded** |
+
+Four concern cryptography, added 2026-10-13:
+
+| Rule | Requirement | Severity | Revision |
+|---|---|---|---|
+| CNTR-OS-000340 | FIPS-validated cryptography protecting log integrity | medium | V2R6 |
+| CNTR-OS-000510 | FIPS-validated 140-2/140-3 cryptography protecting session authenticity | **high** | V2R6 |
+| CNTR-OS-001080 | FIPS-validated SHA-2+ for digital signatures | medium | V2R6 |
+| CNTR-OS-000780 | Keystore encrypts information at rest — **etcd**, not the disk | medium | V2R6 |
+
+Read from ComplianceAsCode's `controls/stig_ocp4.yml`, the control file
+both `ocp4-stig` and `rhcos4-stig` are built from, which cites
+`U_RH_OpenShift_Container_Platform_4-x_V2R6_STIG.zip` as its reference.
+**That is the content's rendering of the benchmark, not the published
+DISA document.** It is good enough to cite with the revision attached
+and not good enough to stop anyone checking against their own.
+
+The first three all reduce to one check,
+`fips_mode_enabled_on_all_nodes`, whose only input is `fips: true` at
+install. The fourth is `api_server_encryption_provider_cipher`, which
+is [chapter 8](docs/08-encryption-at-rest.md) and is a day-1 operation
+rather than an install-time one.
+
+Corroboration worth recording: the same control file sets
+`var_oauth_token_maxage=8h` on `ocp4-stig`, which is the 28800 seconds
+CNTR-OS-000760 above requires — an independent confirmation of one of
+the five unrevisioned citations.
+
+### A negative finding, and it is load-bearing
+
+**No control in the benchmark requires boot-disk encryption.** All 83
+were checked for LUKS, boot-disk and data-at-rest rules; the only
+at-rest control is CNTR-OS-000780, which is etcd. An unencrypted
+cluster therefore passes `ocp4-stig`, `ocp4-stig-node` and
+`rhcos4-stig` cleanly.
+
+This is recorded here rather than left implicit because it inverts the
+usual safety argument. Everywhere else in this repository, a scan is
+the backstop for a mistake. For the one decision that cannot be undone
+without reprovisioning every node, there is no backstop at all. See
+[chapter 3](docs/03-manifests.md#it-is-not-a-stig-control-and-that-is-the-problem).
 
 No other rule ID is cited anywhere. Rule IDs are not stable across
 benchmark revisions, the identifier in the published benchmark differs

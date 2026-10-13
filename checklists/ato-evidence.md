@@ -43,10 +43,21 @@ Built by: ______________________  ISSO: ______________________
 
 | Control | Evidence | ✓ |
 |---|---|---|
-| FIPS mode | `install-config.yaml` showing `fips: true`; install host `fips_enabled=1` | ☐ |
+| FIPS mode — CNTR-OS-000340, 000510, 001080 | `install-config.yaml` showing `fips: true`; install host `fips_enabled=1`; the `fips_mode_enabled_on_all_nodes` check passing in both scans | ☐ |
 | FIPS installer | `openshift-install-fips` used, extracted from the local mirror | ☐ |
-| Boot-disk encryption | `cryptsetup status root` from **every** node | ☐ |
-| Encryption mode | TPM v2 ☐ · Tang/NBDE ☐ · both ☐ · none, accepted ☐ | ☐ |
+| Boot-disk encryption | `cryptsetup status root` and `clevis luks list` from **every** node | ☐ |
+| Encryption mode | TPM v2 ☐ · Tang/NBDE ☐ · none, accepted by ISSO ☐ | ☐ |
+
+> ⚠️ **The two encryption rows are not alike, and an assessor may not
+> know that.** FIPS is covered by three STIG controls and the scan
+> evidences it for you. **Boot-disk encryption is covered by none** —
+> no control in the benchmark requires it, so a clean scan says nothing
+> about it in either direction, and the `cryptsetup` output above is
+> the *only* evidence that exists. If the mode row says "none,
+> accepted", the acceptance has to be a written decision by a named
+> person, because nothing else in this pack will show that the question
+> was asked. See
+> [docs/03-manifests.md](../docs/03-manifests.md#it-is-not-a-stig-control-and-that-is-the-problem).
 | Supply chain | prep's `imageset-config.yaml` + transfer checksums + signed handoff contract | ☐ |
 | No internet egress | network team's record of denied outbound attempts during the install window | ☐ |
 | Build record | the manifests that were applied before ignition, as applied | ☐ |
@@ -77,6 +88,12 @@ Built by: ______________________  ISSO: ______________________
 > a named person, and an assessor will ask for it.
 
 ## 4. Encryption at rest
+
+Distinct from boot-disk encryption above, and the one of the two that
+**is** a STIG control: CNTR-OS-000780, checked by
+`api_server_encryption_provider_cipher`. Name both separately in the
+pack — "encryption at rest" on its own collapses them, and a reviewer
+will take it to mean whichever the scan mentioned.
 
 - [ ] etcd encryption enabled — `APIServer` resource showing the type
 - [ ] Migration **complete**, not merely configured — all three

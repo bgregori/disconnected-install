@@ -239,8 +239,9 @@ cannot catch.
 ## On STIG rule IDs
 
 Rule IDs are cited **only** where the rule has been read and the control
-confirmed. Five are cited in this repository, all concerning
-authentication:
+confirmed. Nine are cited in this repository.
+
+Five concern authentication:
 
 | Rule | Requirement | Chapter |
 |---|---|---|
@@ -249,6 +250,36 @@ authentication:
 | CNTR-OS-000040 | The `kubeadmin` credential must be removed. | [07](docs/07-identity.md) |
 | CNTR-OS-000430 | Multifactor authentication. Satisfied at the IdP, not in the cluster. | [07](docs/07-identity.md), [11](docs/11-manual-controls.md) |
 | CNTR-OS-000760 | `accessTokenMaxAgeSeconds` no greater than 28800. | [07](docs/07-identity.md) |
+
+Four concern cryptography, and the first three are why `fips: true` is
+not optional:
+
+| Rule | Requirement | Chapter |
+|---|---|---|
+| CNTR-OS-000340 | FIPS-validated cryptography protecting the integrity of log information. | [02](docs/02-install-config.md), [11](docs/11-manual-controls.md) |
+| CNTR-OS-000510 | FIPS-validated 140-2 or 140-3 cryptography protecting session authenticity. **Severity: high.** | [02](docs/02-install-config.md) |
+| CNTR-OS-001080 | FIPS-validated SHA-2 or higher for digital signatures. | [02](docs/02-install-config.md) |
+| CNTR-OS-000780 | The keystore must encrypt information at rest — this is **etcd** encryption, not the disk. | [08](docs/08-encryption-at-rest.md) |
+
+All three FIPS controls are satisfied by the same check,
+`fips_mode_enabled_on_all_nodes`, and that check has exactly one input:
+`fips: true` at install. It cannot be set afterwards. **A cluster
+installed without it fails three STIG controls, one of them high, and
+the only remedy is a reinstall** — which is why chapter 1 gates on it
+and chapter 2 sets it in the first block.
+
+These four were read from ComplianceAsCode's `controls/stig_ocp4.yml`
+at benchmark revision **V2R6**, which is the control file both
+`ocp4-stig` and `rhcos4-stig` are built from and which cites
+`U_RH_OpenShift_Container_Platform_4-x_V2R6_STIG.zip` as its source.
+That is the content's rendering of the benchmark, not the published
+DISA document — close enough to cite, not close enough to stop you
+checking against your own revision.
+
+> **Boot-disk encryption is deliberately absent from that table.** None
+> of the 83 controls in the benchmark requires it. See
+> [chapter 3](docs/03-manifests.md#it-is-not-a-stig-control-and-that-is-the-problem),
+> because the consequence is the opposite of reassuring.
 
 Everywhere else this repo describes *what the scan checks* without naming
 a rule. A wrong rule ID in an evidence pack is worse than no rule ID: it
